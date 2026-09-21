@@ -1,5 +1,7 @@
 """Data acquisition, ingestion, validation, splits, and transforms modules."""
 
+from waste_classifier.data.datamodule import WasteDataModule
+from waste_classifier.data.dataset import WasteDataset
 from waste_classifier.data.download import acquire_trashnet, validate_and_clean_dataset
 from waste_classifier.data.ingestion import (
     ClassSummary,
@@ -31,6 +33,8 @@ from waste_classifier.data.transforms import (
 )
 
 __all__ = [
+    "WasteDataset",
+    "WasteDataModule",
     "acquire_trashnet",
     "validate_and_clean_dataset",
     "discover_classes",

@@ -73,6 +73,7 @@ def build_train_transforms(
     config: dict[str, Any] | DictConfig | None = None,
     mean: tuple[float, float, float] = IMAGENET_MEAN,
     std: tuple[float, float, float] = IMAGENET_STD,
+    image_size: int | None = None,
 ) -> A.Compose:
     """Build camera-realistic augmentation pipeline for the TRAIN split only.
 
@@ -104,7 +105,11 @@ def build_train_transforms(
     jpeg_cfg = t_cfg.get("jpeg_compression", {})
     drop_cfg = t_cfg.get("coarse_dropout", {})
 
-    target_size = tuple(crop_cfg.get("size", [224, 224]))
+    target_size = (
+        (image_size, image_size)
+        if image_size is not None
+        else tuple(crop_cfg.get("size", [224, 224]))
+    )
     scale_range = tuple(crop_cfg.get("scale", [0.6, 1.0]))
 
     transforms: list[A.BasicTransform] = [

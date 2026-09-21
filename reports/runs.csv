@@ -1,0 +1,2 @@
+timestamp,git_commit,config_name,phase,backbone,seed,epochs,val_loss,val_acc,val_f1,checkpoint_path
+2026-09-21T23:43:00.519525,bb6fada,base.yaml,1,efficientnet_b0,42,10,1.0393,0.7793,0.7627,C:\Gaurav's Den\crazy-shits\smart-classification\checkpoints\phase1\phase1-efficientnet_b0-epoch=09-val_f1=0.763.ckpt

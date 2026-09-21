@@ -45,6 +45,8 @@ htmlcov/
 # Experiment outputs, logs, and checkpoints
 lightning_logs/
 runs/
+reports/tensorboard/
+checkpoints/
 *.pt
 *.pth
 *.ckpt
