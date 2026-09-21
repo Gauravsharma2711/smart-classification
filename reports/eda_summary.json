@@ -1,0 +1,85 @@
+{
+  "data_dir": "data/raw",
+  "classes": [
+    "cardboard",
+    "glass",
+    "metal",
+    "paper",
+    "plastic",
+    "trash"
+  ],
+  "total_images_scanned": 2527,
+  "valid_images_count": 2527,
+  "corrupt_images_count": 0,
+  "class_summaries": {
+    "cardboard": {
+      "class_name": "cardboard",
+      "count": 403,
+      "percentage": 15.95,
+      "class_weight": 1.0451
+    },
+    "glass": {
+      "class_name": "glass",
+      "count": 501,
+      "percentage": 19.83,
+      "class_weight": 0.8407
+    },
+    "metal": {
+      "class_name": "metal",
+      "count": 410,
+      "percentage": 16.22,
+      "class_weight": 1.0272
+    },
+    "paper": {
+      "class_name": "paper",
+      "count": 594,
+      "percentage": 23.51,
+      "class_weight": 0.709
+    },
+    "plastic": {
+      "class_name": "plastic",
+      "count": 482,
+      "percentage": 19.07,
+      "class_weight": 0.8738
+    },
+    "trash": {
+      "class_name": "trash",
+      "count": 137,
+      "percentage": 5.42,
+      "class_weight": 3.0742
+    }
+  },
+  "imbalance_ratio": 4.34,
+  "width_stats": {
+    "min": 512.0,
+    "max": 512.0,
+    "mean": 512.0,
+    "median": 512.0,
+    "std": 0.0
+  },
+  "height_stats": {
+    "min": 384.0,
+    "max": 384.0,
+    "mean": 384.0,
+    "median": 384.0,
+    "std": 0.0
+  },
+  "aspect_ratios": {
+    "min": 1.33,
+    "max": 1.33,
+    "mean": 1.33,
+    "median": 1.33,
+    "std": 0.0
+  },
+  "file_size_kb_stats": {
+    "min": 5.47,
+    "max": 56.51,
+    "mean": 16.73,
+    "median": 15.02,
+    "std": 7.42
+  },
+  "color_modes": {
+    "RGB": 2527
+  },
+  "corrupted_files": []
+}
