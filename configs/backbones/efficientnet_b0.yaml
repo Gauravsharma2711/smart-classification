@@ -1,0 +1,5 @@
+model:
+  backbone: efficientnet_b0
+  pretrained: true
+  dropout: 0.3
+  image_size: 224

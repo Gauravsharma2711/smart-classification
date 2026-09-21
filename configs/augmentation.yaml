@@ -1,0 +1,44 @@
+# Camera-realistic augmentation settings for training split only (PRD 8.3)
+train:
+  random_resized_crop:
+    size: [224, 224]
+    scale: [0.6, 1.0]
+    p: 1.0
+  rotation:
+    limit: 25
+    p: 0.5
+  perspective:
+    scale: [0.05, 0.1]
+    p: 0.3
+  color_jitter:
+    brightness: 0.2
+    contrast: 0.2
+    saturation: 0.2
+    hue: 0.1
+    p: 0.5
+  blur:
+    motion_blur_limit: 7
+    gaussian_blur_limit: 7
+    p: 0.3
+  noise:
+    var_limit: [10.0, 50.0]
+    p: 0.3
+  jpeg_compression:
+    quality_lower: 60
+    quality_upper: 100
+    p: 0.3
+  coarse_dropout:
+    max_holes: 8
+    max_height: 32
+    max_width: 32
+    min_holes: 1
+    min_height: 8
+    min_width: 8
+    p: 0.3
+
+# Evaluation & inference preprocessing (deterministic only)
+eval:
+  resize: [224, 224]
+  normalize:
+    mean: [0.485, 0.456, 0.406]
+    std: [0.229, 0.224, 0.225]

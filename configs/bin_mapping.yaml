@@ -1,0 +1,38 @@
+# Bin recommendation configuration mapping class names to bin labels, colors, and instructions.
+# Accessibility mandate: text labels must always accompany colors.
+categories:
+  cardboard:
+    bin_name: "Paper & Cardboard Recycling"
+    text_label: "Blue Bin - Recyclables"
+    color_hex: "#1976D2"
+    instructions: "Flatten cardboard boxes before placing into the recycling bin. Keep dry and clean."
+  glass:
+    bin_name: "Glass Recycling"
+    text_label: "Teal/Green Bin - Glass"
+    color_hex: "#00897B"
+    instructions: "Rinse bottles and jars thoroughly. Remove metal or plastic lids."
+  metal:
+    bin_name: "Metals & Cans Recycling"
+    text_label: "Yellow Bin - Metals"
+    color_hex: "#FBC02D"
+    instructions: "Empty and rinse aluminum cans and food tins. Foil can be balled up."
+  paper:
+    bin_name: "Paper Recycling"
+    text_label: "Blue Bin - Paper"
+    color_hex: "#1E88E5"
+    instructions: "Clean office paper, newspapers, magazines. Remove plastic wrapping or greasy sections."
+  plastic:
+    bin_name: "Plastics Recycling"
+    text_label: "Orange Bin - Plastics"
+    color_hex: "#FB8C00"
+    instructions: "Check resin codes (PET/HDPE). Empty liquids and crush plastic bottles."
+  trash:
+    bin_name: "General Waste / Landfill"
+    text_label: "Black/Gray Bin - General Waste"
+    color_hex: "#616161"
+    instructions: "Non-recyclable items, contaminated food packaging, or composite materials."
+  uncertain:
+    bin_name: "Uncertain / Verification Needed"
+    text_label: "Gray Bin - Inspect Item"
+    color_hex: "#9E9E9E"
+    instructions: "Item could not be identified with sufficient confidence. Try another angle or inspect manually."

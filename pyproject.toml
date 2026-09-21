@@ -1,0 +1,73 @@
+[project]
+name = "waste-classifier"
+version = "0.1.0"
+description = "Software-only camera and upload waste classification application"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "torch>=2.2.0",
+    "torchvision>=0.17.0",
+    "timm>=1.0.0",
+    "pytorch-lightning>=2.2.0",
+    "albumentations>=1.4.0",
+    "opencv-python-headless>=4.8.0",
+    "torchmetrics>=1.3.0",
+    "scikit-learn>=1.4.0",
+    "grad-cam>=1.5.0",
+    "imagehash>=4.3.1",
+    "omegaconf>=2.3.0",
+    "pillow>=10.0.0",
+    "numpy>=1.26.0",
+    "pandas>=2.2.0",
+    "matplotlib>=3.8.0",
+    "seaborn>=0.13.0",
+    "tensorboard>=2.16.0",
+    "onnx>=1.15.0",
+    "onnxruntime>=1.17.0",
+    "gradio>=4.20.0",
+    "typer>=0.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.4.0",
+    "pre-commit>=3.6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/waste_classifier"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501", # line-too-long handled by formatter
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]

@@ -1,0 +1,67 @@
+# Python / Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE and OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Testing and Linting
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Experiment outputs, logs, and checkpoints
+lightning_logs/
+runs/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+data/raw/
+data/field_set/
+data/checkpoints/
+data/*.zip
+data/*.tar.gz
+
+# Temporary camera and upload images (Privacy preservation)
+temp_uploads/
+*.jpg
+*.jpeg
+*.png
+!reports/**/*.png
+!reports/**/*.jpg
+!app/assets/**/*.png
+!app/assets/**/*.jpg
+!app/assets/**/*.svg
