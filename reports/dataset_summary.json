@@ -1,0 +1,26 @@
+{
+  "dataset_name": "TrashNet",
+  "source": "https://huggingface.co/datasets/garythung/trashnet",
+  "license": "MIT",
+  "dataset_dir": "data/raw",
+  "classes": [
+    "cardboard",
+    "glass",
+    "metal",
+    "paper",
+    "plastic",
+    "trash"
+  ],
+  "class_counts": {
+    "cardboard": 403,
+    "glass": 501,
+    "metal": 410,
+    "paper": 594,
+    "plastic": 482,
+    "trash": 137
+  },
+  "total_valid_images": 2527,
+  "corrupted_images_count": 0,
+  "corrupted_files": [],
+  "unsupported_files_count": 0
+}
