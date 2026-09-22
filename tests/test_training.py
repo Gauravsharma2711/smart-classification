@@ -102,14 +102,11 @@ def test_lightning_module_phase1_invariants() -> None:
 def test_lightning_module_phase1_violation_raises_runtime_error() -> None:
     """Verify an error is raised if backbone parameters remain trainable in Phase 1."""
     model = create_model(backbone_name="efficientnet_b0", num_classes=6, pretrained=False)
-    # Manually unfreeze backbone
-    model.unfreeze_backbone(1.0)
+    module = WasteLightningModule(model=model, num_classes=6, phase=1)
 
+    # Intentionally unfreeze backbone to simulate Phase 1 invariant violation
+    module.model.unfreeze_backbone(1.0)
     with pytest.raises(RuntimeError, match="Phase 1 invariant violated"):
-        # Explicitly verify Phase 1 violation without calling freeze_backbone first
-        module = WasteLightningModule(model=model, num_classes=6, phase=2)
-        # Now artificially enforce phase 1 check
-        module.phase = 1
         module._verify_phase1_invariants()
 
 
@@ -181,3 +178,110 @@ def test_trainer_smoke_run(tmp_path: Path) -> None:
     last_ckpt = tmp_path / "last.ckpt"
     assert last_ckpt.exists()
     assert last_ckpt.stat().st_size > 0
+
+
+def test_lightning_module_phase2_invariants() -> None:
+    """Verify Phase 2 requires partially unfrozen backbone and rejects fully frozen/unfrozen ones."""
+    model = create_model(backbone_name="efficientnet_b0", num_classes=6, pretrained=False)
+    model.freeze_backbone()
+    model.unfreeze_backbone(0.25)
+
+    # Valid Phase 2 setup
+    module = WasteLightningModule(model=model, num_classes=6, phase=2)
+    assert module.phase == 2
+
+    # Invariant failure case 1: Fully frozen backbone in Phase 2
+    model.freeze_backbone()
+    with pytest.raises(RuntimeError, match="backbone has no trainable parameters"):
+        WasteLightningModule(model=model, num_classes=6, phase=2)
+
+    # Invariant failure case 2: Fully unfrozen backbone in Phase 2
+    model.unfreeze_backbone(1.0)
+    with pytest.raises(RuntimeError, match="entire backbone is unfrozen"):
+        WasteLightningModule(model=model, num_classes=6, phase=2)
+
+
+def test_phase2_optimizer_and_scheduler() -> None:
+    """Verify differential learning rates and CosineAnnealingLR scheduler in Phase 2."""
+    model = create_model(backbone_name="mobilenetv3_large_100", num_classes=6, pretrained=False)
+    model.freeze_backbone()
+    model.unfreeze_backbone(0.25)
+
+    module = WasteLightningModule(
+        model=model,
+        num_classes=6,
+        lr_backbone=1e-5,
+        lr_head=1e-4,
+        max_epochs=15,
+        phase=2,
+    )
+
+    opt_config = module.configure_optimizers()
+    assert isinstance(opt_config, dict)
+    assert "optimizer" in opt_config
+    assert "lr_scheduler" in opt_config
+
+    optimizer = opt_config["optimizer"]
+    assert len(optimizer.param_groups) == 2
+    assert optimizer.param_groups[0]["lr"] == 1e-5
+    assert optimizer.param_groups[1]["lr"] == 1e-4
+
+    scheduler = opt_config["lr_scheduler"]["scheduler"]
+    assert isinstance(scheduler, torch.optim.lr_scheduler.CosineAnnealingLR)
+    assert scheduler.T_max == 15
+
+
+def test_phase2_batchnorm_eval_mode() -> None:
+    """Verify BatchNorm layers remain locked in eval mode during Phase 2 training."""
+    model = create_model(backbone_name="resnet50", num_classes=6, pretrained=False)
+    model.freeze_backbone()
+    model.unfreeze_backbone(0.25)
+
+    module = WasteLightningModule(model=model, num_classes=6, phase=2, freeze_bn=True)
+    # Set entire module to train mode
+    module.train()
+
+    # Trigger epoch start hook which locks BatchNorm
+    module.on_train_epoch_start()
+
+    # Verify that all BatchNorm layers are in eval mode (training == False)
+    bn_layers = [
+        m
+        for m in module.model.modules()
+        if isinstance(m, (torch.nn.BatchNorm1d, torch.nn.BatchNorm2d, torch.nn.BatchNorm3d))
+    ]
+    assert len(bn_layers) > 0
+    assert all(not m.training for m in bn_layers)
+
+
+def test_phase2_smoke_training(tmp_path: Path) -> None:
+    """Verify end-to-end Phase 2 smoke execution loading from Phase 1 checkpoint."""
+    from waste_classifier.train import train_phase1, train_phase2
+
+    manifest_path = Path("data/splits.csv")
+    raw_dir = Path("data/raw")
+    if not manifest_path.exists() or not raw_dir.exists():
+        pytest.skip("Dataset or manifest not available locally.")
+
+    p1_dir = tmp_path / "p1"
+    p2_dir = tmp_path / "p2"
+
+    # Quick 1-batch smoke Phase 1 to produce a valid checkpoint
+    _, p1_results = train_phase1(
+        epochs=1,
+        smoke_test=True,
+        checkpoint_dir=p1_dir,
+    )
+    p1_ckpt = p1_results["checkpoint_path"]
+
+    # Execute Phase 2 smoke test starting from the Phase 1 checkpoint
+    _, p2_results, comparison = train_phase2(
+        phase1_checkpoint=p1_ckpt,
+        epochs=1,
+        smoke_test=True,
+        checkpoint_dir=p2_dir,
+    )
+
+    assert p2_results["phase"] == 2
+    assert "delta_val_f1" in comparison
+    assert Path(p2_results["checkpoint_path"]).exists()

@@ -16,7 +16,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from waste_classifier.train import train_phase1
+from waste_classifier.train import train_phase1, train_phase2
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("waste_classifier.cli")
@@ -59,7 +59,35 @@ def train_cmd(
         float | None,
         typer.Option(
             "--lr",
-            help="Override learning rate.",
+            help="Override learning rate (Phase 1).",
+        ),
+    ] = None,
+    lr_backbone: Annotated[
+        float | None,
+        typer.Option(
+            "--lr-backbone",
+            help="Override fine-tuning learning rate for backbone (Phase 2).",
+        ),
+    ] = None,
+    lr_head: Annotated[
+        float | None,
+        typer.Option(
+            "--lr-head",
+            help="Override fine-tuning learning rate for classifier head (Phase 2).",
+        ),
+    ] = None,
+    unfreeze_fraction: Annotated[
+        float | None,
+        typer.Option(
+            "--unfreeze-fraction",
+            help="Override fraction of trailing backbone parameter tensors to unfreeze (Phase 2).",
+        ),
+    ] = None,
+    phase1_checkpoint: Annotated[
+        Path | None,
+        typer.Option(
+            "--phase1-checkpoint",
+            help="Explicit path to Phase 1 checkpoint (defaults to best checkpoint).",
         ),
     ] = None,
     backbone: Annotated[
@@ -118,8 +146,65 @@ def train_cmd(
             table.add_row(k, str(v))
 
         console.print(table)
+
+    elif phase == 2:
+        _, results, comparison = train_phase2(
+            config_path=config,
+            phase1_checkpoint=phase1_checkpoint,
+            epochs=epochs,
+            lr_backbone=lr_backbone,
+            lr_head=lr_head,
+            unfreeze_fraction=unfreeze_fraction,
+            batch_size=batch_size,
+            smoke_test=smoke_test,
+            seed=seed,
+        )
+
+        table = Table(
+            title="Phase 2 Fine-Tuning Summary", show_header=True, header_style="bold magenta"
+        )
+        table.add_column("Metric", style="dim")
+        table.add_column("Value", style="bold green")
+
+        for k, v in results.items():
+            table.add_row(k, str(v))
+
+        console.print(table)
+
+        # Print Objective Comparison Table between Phase 1 and Phase 2
+        comp_table = Table(
+            title="Phase 1 Baseline vs Phase 2 Fine-Tuning Comparison",
+            show_header=True,
+            header_style="bold cyan",
+        )
+        comp_table.add_column("Metric")
+        comp_table.add_column("Phase 1 Baseline", style="yellow")
+        comp_table.add_column("Phase 2 Fine-Tuning", style="green")
+        comp_table.add_column("Delta (P2 - P1)", style="bold")
+
+        comp_table.add_row(
+            "Validation Loss",
+            str(comparison["phase1_val_loss"]),
+            str(comparison["phase2_val_loss"]),
+            f"{comparison['delta_val_loss']:+.4f}",
+        )
+        comp_table.add_row(
+            "Validation Accuracy",
+            f"{comparison['phase1_val_acc'] * 100:.2f}%",
+            f"{comparison['phase2_val_acc'] * 100:.2f}%",
+            f"{comparison['delta_val_acc'] * 100:+.2f}%",
+        )
+        comp_table.add_row(
+            "Validation Macro-F1",
+            f"{comparison['phase1_val_f1'] * 100:.2f}%",
+            f"{comparison['phase2_val_f1'] * 100:.2f}%",
+            f"{comparison['delta_val_f1'] * 100:+.2f}%",
+        )
+
+        console.print(comp_table)
+
     else:
-        raise typer.BadParameter(f"Phase {phase} training is not yet supported in this version.")
+        raise typer.BadParameter(f"Phase {phase} training is not valid (must be 1 or 2).")
 
 
 @app.command("evaluate")

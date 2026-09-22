@@ -1,10 +1,10 @@
 """PyTorch Lightning Module for waste classification.
 
-Implements FR-5 (Phase 1 Transfer Learning):
-- Pretrained backbone frozen with only classifier head trainable.
-- AdamW optimizer with configurable learning rate.
-- Cross-entropy loss with configurable label smoothing and balanced class weights.
-- Per-epoch loss, accuracy, and macro-F1 tracking using TorchMetrics.
+Implements:
+- FR-5 (Phase 1 Transfer Learning): Pretrained backbone frozen, head trainable only.
+- FR-6 (Phase 2 Fine-Tuning): Partial backbone unfreezing (last 20-30%), differential
+  learning rates (lr_backbone << lr_head), cosine annealing scheduler, early stopping,
+  and BatchNorm kept in eval mode.
 """
 
 from __future__ import annotations
@@ -32,8 +32,12 @@ class WasteLightningModule(pl.LightningModule):
         class_weights: torch.Tensor | None = None,
         label_smoothing: float = 0.1,
         lr: float = 1e-3,
+        lr_backbone: float = 1e-5,
+        lr_head: float = 1e-4,
+        max_epochs: int = 15,
         weight_decay: float = 1e-2,
         phase: int = 1,
+        freeze_bn: bool = True,
     ) -> None:
         """Initialize WasteLightningModule.
 
@@ -42,9 +46,13 @@ class WasteLightningModule(pl.LightningModule):
             num_classes: Number of target categories.
             class_weights: Optional 1D tensor of per-class loss weights.
             label_smoothing: Label smoothing factor for CrossEntropyLoss.
-            lr: Learning rate for optimizer.
+            lr: Learning rate for Phase 1 optimizer.
+            lr_backbone: Fine-tuning learning rate for backbone parameters in Phase 2.
+            lr_head: Fine-tuning learning rate for classifier head in Phase 2.
+            max_epochs: Total epochs for CosineAnnealingLR horizon.
             weight_decay: Weight decay factor for AdamW.
-            phase: Fine-tuning phase (1 for frozen backbone, 2 for fine-tuning).
+            phase: Training phase (1 for frozen backbone, 2 for partial fine-tuning).
+            freeze_bn: Keep BatchNorm layers in evaluation mode during Phase 2 training.
         """
         super().__init__()
         self.save_hyperparameters(ignore=["model", "class_weights"])
@@ -52,8 +60,12 @@ class WasteLightningModule(pl.LightningModule):
         self.model = model
         self.num_classes = num_classes
         self.lr = lr
+        self.lr_backbone = lr_backbone
+        self.lr_head = lr_head
+        self.max_epochs = max_epochs
         self.weight_decay = weight_decay
         self.phase = phase
+        self.freeze_bn = freeze_bn
         self.label_smoothing = label_smoothing
 
         # Register class weights as buffer so it moves across devices
@@ -73,10 +85,12 @@ class WasteLightningModule(pl.LightningModule):
         self.val_acc = MulticlassAccuracy(num_classes=num_classes)
         self.val_f1 = MulticlassF1Score(num_classes=num_classes, average="macro")
 
-        # Configure phase 1 frozen backbone invariant
+        # Configure phase invariants
         if self.phase == 1:
             self.model.freeze_backbone()
             self._verify_phase1_invariants()
+        elif self.phase == 2:
+            self._verify_phase2_invariants()
 
     def _verify_phase1_invariants(self) -> None:
         """Verify that backbone parameters are frozen and head parameters are trainable."""
@@ -94,10 +108,62 @@ class WasteLightningModule(pl.LightningModule):
             )
         logger.info("Phase 1 invariants verified: backbone is fully frozen, head is trainable.")
 
+    def _verify_phase2_invariants(self) -> None:
+        """Verify that backbone is partially unfrozen and head is trainable."""
+        backbone_trainable = [p for p in self.model.backbone.parameters() if p.requires_grad]
+        backbone_frozen = [p for p in self.model.backbone.parameters() if not p.requires_grad]
+        head_trainable = [p for p in self.model.head.parameters() if p.requires_grad]
+
+        if not backbone_trainable:
+            raise RuntimeError(
+                "Phase 2 invariant violated: backbone has no trainable parameters! "
+                "Trailing layers must be unfrozen."
+            )
+        if not backbone_frozen:
+            raise RuntimeError(
+                "Phase 2 invariant violated: entire backbone is unfrozen! "
+                "Earlier layers must remain frozen."
+            )
+        if not head_trainable:
+            raise RuntimeError(
+                "Phase 2 invariant violated: classifier head has no trainable parameters!"
+            )
+        logger.info(
+            f"Phase 2 invariants verified: backbone has {len(backbone_trainable)} trainable "
+            f"and {len(backbone_frozen)} frozen tensors; head is trainable."
+        )
+
+    def freeze_batchnorm(self) -> None:
+        """Freeze all BatchNorm layers in eval mode to prevent statistics corruption."""
+        count = 0
+        for m in self.model.modules():
+            if isinstance(
+                m,
+                (
+                    nn.BatchNorm1d,
+                    nn.BatchNorm2d,
+                    nn.BatchNorm3d,
+                    nn.modules.batchnorm._BatchNorm,
+                ),
+            ):
+                m.eval()
+                count += 1
+        if count > 0:
+            logger.debug(f"Locked {count} BatchNorm layers in eval mode.")
+
+    def on_train_epoch_start(self) -> None:
+        """Enforce BatchNorm eval mode at the beginning of each training epoch."""
+        if self.phase == 2 and self.freeze_bn:
+            self.freeze_batchnorm()
+
     def on_fit_start(self) -> None:
-        """Ensure invariants hold at fit start."""
+        """Ensure phase invariants hold at fit start."""
         if self.phase == 1:
             self._verify_phase1_invariants()
+        elif self.phase == 2:
+            self._verify_phase2_invariants()
+            if self.freeze_bn:
+                self.freeze_batchnorm()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through underlying classifier."""
@@ -148,15 +214,47 @@ class WasteLightningModule(pl.LightningModule):
         self.val_f1.reset()
 
     def configure_optimizers(self) -> Any:
-        """Configure AdamW optimizer for trainable parameters only."""
-        trainable_params = [p for p in self.parameters() if p.requires_grad]
+        """Configure optimizer and learning rate scheduler according to phase."""
+        if self.phase == 1:
+            trainable_params = [p for p in self.parameters() if p.requires_grad]
+            logger.info(
+                f"Phase 1: AdamW with {len(trainable_params)} trainable "
+                f"parameter tensors, lr={self.lr}, weight_decay={self.weight_decay}"
+            )
+            return torch.optim.AdamW(
+                trainable_params,
+                lr=self.lr,
+                weight_decay=self.weight_decay,
+            )
+
+        # Phase 2: Separate parameter groups for backbone and head with Cosine Annealing
+        backbone_params = [p for p in self.model.backbone.parameters() if p.requires_grad]
+        head_params = [p for p in self.model.head.parameters() if p.requires_grad]
+
         logger.info(
-            f"Configuring AdamW optimizer with {len(trainable_params)} trainable "
-            f"parameter tensors, lr={self.lr}, weight_decay={self.weight_decay}"
+            f"Phase 2: AdamW with {len(backbone_params)} backbone tensors (lr={self.lr_backbone}), "
+            f"{len(head_params)} head tensors (lr={self.lr_head}), weight_decay={self.weight_decay}"
         )
+
         optimizer = torch.optim.AdamW(
-            trainable_params,
-            lr=self.lr,
+            [
+                {"params": backbone_params, "lr": self.lr_backbone},
+                {"params": head_params, "lr": self.lr_head},
+            ],
             weight_decay=self.weight_decay,
         )
-        return optimizer
+
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=self.max_epochs,
+            eta_min=1e-7,
+        )
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "epoch",
+                "frequency": 1,
+            },
+        }
