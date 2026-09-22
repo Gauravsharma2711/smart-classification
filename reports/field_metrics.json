@@ -1,0 +1,122 @@
+{
+  "overall": {
+    "accuracy": 0.6,
+    "macro_precision": 0.5894,
+    "macro_recall": 0.6,
+    "macro_f1": 0.584,
+    "weighted_f1": 0.584,
+    "total_samples": 120
+  },
+  "per_class": {
+    "cardboard": {
+      "precision": 0.6842,
+      "recall": 0.65,
+      "f1_score": 0.6667,
+      "support": 20
+    },
+    "glass": {
+      "precision": 0.7333,
+      "recall": 0.55,
+      "f1_score": 0.6286,
+      "support": 20
+    },
+    "metal": {
+      "precision": 0.5833,
+      "recall": 0.7,
+      "f1_score": 0.6364,
+      "support": 20
+    },
+    "paper": {
+      "precision": 0.7368,
+      "recall": 0.7,
+      "f1_score": 0.7179,
+      "support": 20
+    },
+    "plastic": {
+      "precision": 0.5484,
+      "recall": 0.85,
+      "f1_score": 0.6667,
+      "support": 20
+    },
+    "trash": {
+      "precision": 0.25,
+      "recall": 0.15,
+      "f1_score": 0.1875,
+      "support": 20
+    }
+  },
+  "confusion_matrix": [
+    [
+      13,
+      0,
+      1,
+      0,
+      2,
+      4
+    ],
+    [
+      0,
+      11,
+      5,
+      0,
+      3,
+      1
+    ],
+    [
+      0,
+      1,
+      14,
+      0,
+      4,
+      1
+    ],
+    [
+      5,
+      0,
+      0,
+      14,
+      0,
+      1
+    ],
+    [
+      0,
+      1,
+      0,
+      0,
+      17,
+      2
+    ],
+    [
+      1,
+      2,
+      4,
+      5,
+      5,
+      3
+    ]
+  ],
+  "class_names": [
+    "cardboard",
+    "glass",
+    "metal",
+    "paper",
+    "plastic",
+    "trash"
+  ],
+  "metadata": {
+    "checkpoint_path": "C:\\Gaurav's Den\\crazy-shits\\smart-classification\\checkpoints\\phase2\\phase2-efficientnet_b0-epoch=11-val_f1=0.781.ckpt",
+    "config_name": "base.yaml",
+    "backbone": "efficientnet_b0",
+    "seed": 42,
+    "split": "field",
+    "timestamp": "2026-09-23T00:50:23.422386",
+    "git_commit": "21cc117"
+  },
+  "negative_rejection": {
+    "total_negatives": 15,
+    "rejected_count": 13,
+    "rejection_rate": 0.8667,
+    "confidence_threshold": 0.6,
+    "mean_confidence": 0.447
+  }
+}

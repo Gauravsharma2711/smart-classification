@@ -229,7 +229,7 @@ def evaluate_cmd(
         typer.Option(
             "--split",
             "-s",
-            help="Dataset split to evaluate ('test' or 'val').",
+            help="Dataset split to evaluate ('test', 'val', or 'field').",
         ),
     ] = "test",
     output_dir: Annotated[
@@ -240,7 +240,7 @@ def evaluate_cmd(
         ),
     ] = Path("reports"),
 ) -> None:
-    """Evaluate model checkpoint on held-out test set or validation set."""
+    """Evaluate model checkpoint on held-out test set, validation set, or field set."""
     from waste_classifier.evaluate import evaluate_checkpoint
 
     console.print(f"[bold cyan]Running Model Evaluation on split '{split}'...[/bold cyan]")
@@ -296,10 +296,37 @@ def evaluate_cmd(
         )
 
     console.print(pc_table)
+
+    # 3. Negative Sample Rejection Table (if available)
+    if result.negative_rejection:
+        neg_table = Table(
+            title="Negative Image Uncertainty Rejection",
+            show_header=True,
+            header_style="bold yellow",
+        )
+        neg_table.add_column("Metric", style="dim")
+        neg_table.add_column("Value", style="bold yellow")
+        neg = result.negative_rejection
+        neg_table.add_row("Total Negatives Tested", str(neg.get("total_negatives", 0)))
+        neg_table.add_row("Confidence Threshold", f"{neg.get('confidence_threshold', 0.60):.2f}")
+        neg_table.add_row("Samples Rejected / Flagged Uncertain", str(neg.get("rejected_count", 0)))
+        neg_table.add_row("Rejection Rate", f"{float(neg.get('rejection_rate', 0.0)) * 100:.2f}%")
+        neg_table.add_row(
+            "Mean Negative Confidence", f"{float(neg.get('mean_confidence', 0.0)) * 100:.2f}%"
+        )
+        console.print(neg_table)
+
     console.print(f"[bold green]Artifacts written to: {output_dir}/[/bold green]")
     console.print(f"  - Metrics JSON: {output_dir / f'{split}_metrics.json'}")
-    console.print(f"  - Confusion Matrix: {output_dir / 'confusion_matrix.png'}")
-    console.print(f"  - Classification Report: {output_dir / 'classification_report.txt'}")
+    if split == "field":
+        console.print(f"  - Confusion Matrix: {output_dir / 'field_confusion_matrix.png'}")
+        console.print(
+            f"  - Classification Report: {output_dir / 'field_classification_report.txt'}"
+        )
+        console.print(f"  - Error Analysis: {output_dir / 'field_error_analysis.md'}")
+    else:
+        console.print(f"  - Confusion Matrix: {output_dir / 'confusion_matrix.png'}")
+        console.print(f"  - Classification Report: {output_dir / 'classification_report.txt'}")
 
 
 @app.command("export")
