@@ -210,12 +210,12 @@ def train_cmd(
 @app.command("evaluate")
 def evaluate_cmd(
     checkpoint: Annotated[
-        Path,
+        Path | None,
         typer.Option(
             "--checkpoint",
-            help="Path to model checkpoint.",
+            help="Path to model checkpoint (defaults to best available).",
         ),
-    ] = Path("checkpoints/phase1/last.ckpt"),
+    ] = None,
     config: Annotated[
         Path,
         typer.Option(
@@ -224,10 +224,82 @@ def evaluate_cmd(
             help="Path to YAML configuration file.",
         ),
     ] = Path("configs/base.yaml"),
+    split: Annotated[
+        str,
+        typer.Option(
+            "--split",
+            "-s",
+            help="Dataset split to evaluate ('test' or 'val').",
+        ),
+    ] = "test",
+    output_dir: Annotated[
+        Path,
+        typer.Option(
+            "--output-dir",
+            help="Directory to save evaluation reports.",
+        ),
+    ] = Path("reports"),
 ) -> None:
-    """Evaluate model checkpoint on held-out test set or field set."""
-    console.print("[yellow]Evaluation module (FR-7/FR-8) will be executed.[/yellow]")
-    raise typer.Exit(code=0)
+    """Evaluate model checkpoint on held-out test set or validation set."""
+    from waste_classifier.evaluate import evaluate_checkpoint
+
+    console.print(f"[bold cyan]Running Model Evaluation on split '{split}'...[/bold cyan]")
+
+    result = evaluate_checkpoint(
+        checkpoint_path=checkpoint,
+        config_path=config,
+        split=split,
+        output_dir=output_dir,
+    )
+
+    # 1. Overall Metrics Table
+    ov_table = Table(
+        title=f"Overall Evaluation Metrics ({split.capitalize()} Set)",
+        show_header=True,
+        header_style="bold magenta",
+    )
+    ov_table.add_column("Metric", style="dim")
+    ov_table.add_column("Score", style="bold green")
+
+    for k, v in result.overall.items():
+        if isinstance(v, float):
+            ov_table.add_row(
+                k.replace("_", " ").title(),
+                f"{v:.4f} ({v * 100:.2f}%)"
+                if "f1" in k or "acc" in k or "rec" in k or "prec" in k
+                else f"{v:.4f}",
+            )
+        else:
+            ov_table.add_row(k.replace("_", " ").title(), str(v))
+
+    console.print(ov_table)
+
+    # 2. Per-Class Metrics Table
+    pc_table = Table(
+        title="Per-Class Performance Metrics",
+        show_header=True,
+        header_style="bold cyan",
+    )
+    pc_table.add_column("Class Name", style="bold")
+    pc_table.add_column("Precision", justify="right")
+    pc_table.add_column("Recall", justify="right")
+    pc_table.add_column("F1-Score", justify="right")
+    pc_table.add_column("Support", justify="right")
+
+    for cls_name, metrics in result.per_class.items():
+        pc_table.add_row(
+            cls_name,
+            f"{metrics['precision']:.4f}",
+            f"{metrics['recall']:.4f}",
+            f"{metrics['f1_score']:.4f}",
+            str(metrics["support"]),
+        )
+
+    console.print(pc_table)
+    console.print(f"[bold green]Artifacts written to: {output_dir}/[/bold green]")
+    console.print(f"  - Metrics JSON: {output_dir / f'{split}_metrics.json'}")
+    console.print(f"  - Confusion Matrix: {output_dir / 'confusion_matrix.png'}")
+    console.print(f"  - Classification Report: {output_dir / 'classification_report.txt'}")
 
 
 @app.command("export")

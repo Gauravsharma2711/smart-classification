@@ -1,0 +1,115 @@
+{
+  "overall": {
+    "accuracy": 0.8316,
+    "macro_precision": 0.8086,
+    "macro_recall": 0.8401,
+    "macro_f1": 0.809,
+    "weighted_f1": 0.8401,
+    "total_samples": 380
+  },
+  "per_class": {
+    "cardboard": {
+      "precision": 0.9623,
+      "recall": 0.8361,
+      "f1_score": 0.8947,
+      "support": 61
+    },
+    "glass": {
+      "precision": 0.875,
+      "recall": 0.84,
+      "f1_score": 0.8571,
+      "support": 75
+    },
+    "metal": {
+      "precision": 0.7969,
+      "recall": 0.8226,
+      "f1_score": 0.8095,
+      "support": 62
+    },
+    "paper": {
+      "precision": 0.881,
+      "recall": 0.8222,
+      "f1_score": 0.8506,
+      "support": 90
+    },
+    "plastic": {
+      "precision": 0.9077,
+      "recall": 0.8194,
+      "f1_score": 0.8613,
+      "support": 72
+    },
+    "trash": {
+      "precision": 0.4286,
+      "recall": 0.9,
+      "f1_score": 0.5806,
+      "support": 20
+    }
+  },
+  "confusion_matrix": [
+    [
+      51,
+      0,
+      1,
+      8,
+      0,
+      1
+    ],
+    [
+      0,
+      63,
+      6,
+      0,
+      5,
+      1
+    ],
+    [
+      0,
+      5,
+      51,
+      1,
+      1,
+      4
+    ],
+    [
+      2,
+      0,
+      2,
+      74,
+      0,
+      12
+    ],
+    [
+      0,
+      4,
+      3,
+      0,
+      59,
+      6
+    ],
+    [
+      0,
+      0,
+      1,
+      1,
+      0,
+      18
+    ]
+  ],
+  "class_names": [
+    "cardboard",
+    "glass",
+    "metal",
+    "paper",
+    "plastic",
+    "trash"
+  ],
+  "metadata": {
+    "checkpoint_path": "C:\\Gaurav's Den\\crazy-shits\\smart-classification\\checkpoints\\phase2\\phase2-efficientnet_b0-epoch=11-val_f1=0.781.ckpt",
+    "config_name": "base.yaml",
+    "backbone": "efficientnet_b0",
+    "seed": 42,
+    "split": "test",
+    "timestamp": "2026-09-23T00:18:17.517684",
+    "git_commit": "d532750"
+  }
+}
