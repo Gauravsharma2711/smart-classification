@@ -1,0 +1,86 @@
+{
+  "efficientnet_b0": {
+    "backbone": "efficientnet_b0",
+    "seeds_evaluated": [
+      42,
+      123,
+      456
+    ],
+    "num_seeds": 3,
+    "specs": {
+      "backbone": "efficientnet_b0",
+      "total_params": 4015234,
+      "trainable_params": 4015234,
+      "model_size_mb": 15.32,
+      "latency_ms_mean": 75.99,
+      "latency_ms_std": 44.28,
+      "throughput_fps": 13.2
+    },
+    "metrics": {
+      "test_macro_f1_mean": 0.7109,
+      "test_macro_f1_std": 0.0217,
+      "test_accuracy_mean": 0.7334,
+      "test_accuracy_std": 0.019,
+      "field_accuracy_mean": 0.525,
+      "field_accuracy_std": 0.0083,
+      "val_f1_mean": 0.6752,
+      "val_f1_std": 0.0046
+    }
+  },
+  "mobilenetv3_large_100": {
+    "backbone": "mobilenetv3_large_100",
+    "seeds_evaluated": [
+      42,
+      123,
+      456
+    ],
+    "num_seeds": 3,
+    "specs": {
+      "backbone": "mobilenetv3_large_100",
+      "total_params": 4209718,
+      "trainable_params": 4209718,
+      "model_size_mb": 16.06,
+      "latency_ms_mean": 51.28,
+      "latency_ms_std": 37.56,
+      "throughput_fps": 19.5
+    },
+    "metrics": {
+      "test_macro_f1_mean": 0.7291,
+      "test_macro_f1_std": 0.0158,
+      "test_accuracy_mean": 0.7473,
+      "test_accuracy_std": 0.0164,
+      "field_accuracy_mean": 0.5639,
+      "field_accuracy_std": 0.0209,
+      "val_f1_mean": 0.7031,
+      "val_f1_std": 0.0085
+    }
+  },
+  "resnet50": {
+    "backbone": "resnet50",
+    "seeds_evaluated": [
+      42,
+      123,
+      456
+    ],
+    "num_seeds": 3,
+    "specs": {
+      "backbone": "resnet50",
+      "total_params": 23520326,
+      "trainable_params": 23520326,
+      "model_size_mb": 89.72,
+      "latency_ms_mean": 162.66,
+      "latency_ms_std": 26.2,
+      "throughput_fps": 6.1
+    },
+    "metrics": {
+      "test_macro_f1_mean": 0.6029,
+      "test_macro_f1_std": 0.0237,
+      "test_accuracy_mean": 0.6298,
+      "test_accuracy_std": 0.0288,
+      "field_accuracy_mean": 0.4611,
+      "field_accuracy_std": 0.0636,
+      "val_f1_mean": 0.6145,
+      "val_f1_std": 0.0282
+    }
+  }
+}

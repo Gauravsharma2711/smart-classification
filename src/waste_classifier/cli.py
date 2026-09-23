@@ -158,6 +158,7 @@ def train_cmd(
             batch_size=batch_size,
             smoke_test=smoke_test,
             seed=seed,
+            backbone=backbone,
         )
 
         table = Table(
@@ -545,6 +546,90 @@ def explain_cmd(
         output.parent.mkdir(parents=True, exist_ok=True)
         res.overlay_image.save(output)
         console.print(f"[bold green]Saved overlay to {output}[/bold green]")
+
+
+@app.command("benchmark")
+def benchmark_cmd(
+    backbones: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--backbone",
+            "-b",
+            help="Backbones to compare (can specify multiple times). Defaults to efficientnet_b0, mobilenetv3_large_100, resnet50.",
+        ),
+    ] = None,
+    seeds: Annotated[
+        list[int] | None,
+        typer.Option(
+            "--seed",
+            "-s",
+            help="Random seeds to evaluate (can specify multiple times). Defaults to 42, 123, 456.",
+        ),
+    ] = None,
+    epochs: Annotated[
+        int,
+        typer.Option(
+            "--epochs",
+            "-e",
+            help="Number of epochs per training run.",
+        ),
+    ] = 3,
+    batch_size: Annotated[
+        int,
+        typer.Option(
+            "--batch-size",
+            help="Batch size.",
+        ),
+    ] = 64,
+    smoke_test: Annotated[
+        bool,
+        typer.Option(
+            "--smoke-test",
+            help="Fast smoke test on a small synthetic subset.",
+        ),
+    ] = False,
+) -> None:
+    """Run empirical backbone comparison across multiple random seeds (FR-18, FR-19)."""
+    from waste_classifier.benchmark import run_full_multi_seed_comparison
+
+    console.print(
+        "[bold cyan]Initiating Multi-Backbone Multi-Seed Benchmark Routine (FR-18 & FR-19)...[/bold cyan]"
+    )
+
+    aggregated = run_full_multi_seed_comparison(
+        backbones=backbones,
+        seeds=seeds,
+        epochs=epochs,
+        batch_size=batch_size,
+        smoke_test=smoke_test,
+    )
+
+    table = Table(
+        title="Empirical Backbone Comparison Summary (3 Seeds)",
+        show_header=True,
+        header_style="bold magenta",
+    )
+    table.add_column("Architecture", style="bold cyan")
+    table.add_column("Parameters", justify="right")
+    table.add_column("Model Size", justify="right")
+    table.add_column("CPU Latency", justify="right")
+    table.add_column("Test Macro-F1", justify="right", style="green")
+    table.add_column("Field-Set Accuracy", justify="right", style="yellow")
+
+    for b_name, data in aggregated.items():
+        specs = data["specs"]
+        metrics = data["metrics"]
+        table.add_row(
+            b_name,
+            f"{specs['total_params'] / 1e6:.1f}M",
+            f"{specs['model_size_mb']:.1f} MB",
+            f"{specs['latency_ms_mean']:.1f} ± {specs['latency_ms_std']:.1f} ms",
+            f"{metrics['test_macro_f1_mean'] * 100:.2f}% ± {metrics['test_macro_f1_std'] * 100:.2f}%",
+            f"{metrics['field_accuracy_mean'] * 100:.2f}% ± {metrics['field_accuracy_std'] * 100:.2f}%",
+        )
+
+    console.print(table)
+    console.print("[bold green]Benchmark complete! Artifacts written to reports/[/bold green]")
 
 
 @app.command("export")

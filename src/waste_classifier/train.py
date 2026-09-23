@@ -76,6 +76,8 @@ def find_best_phase1_checkpoint(
     checkpoint_path: Path | str | None = None,
     runs_csv_path: Path | str = "reports/runs.csv",
     checkpoint_dir: Path | str = "checkpoints/phase1",
+    backbone: str | None = None,
+    seed: int | None = None,
 ) -> tuple[Path, dict[str, float]]:
     """Locate the best Phase 1 checkpoint and retrieve its baseline validation metrics.
 
@@ -83,6 +85,8 @@ def find_best_phase1_checkpoint(
         checkpoint_path: Optional explicit path to checkpoint.
         runs_csv_path: Path to CSV tracking previous training runs.
         checkpoint_dir: Fallback directory to search for Phase 1 checkpoints.
+        backbone: Optional backbone name to filter checkpoints by.
+        seed: Optional random seed to filter checkpoints by.
 
     Returns:
         Tuple of (checkpoint Path, dict with Phase 1 baseline metrics).
@@ -102,6 +106,13 @@ def find_best_phase1_checkpoint(
         try:
             df = pd.read_csv(csv_p)
             phase1_runs = df[df["phase"] == 1]
+            if backbone is not None and not phase1_runs.empty and "backbone" in phase1_runs.columns:
+                phase1_runs = phase1_runs[phase1_runs["backbone"] == backbone]
+            if seed is not None and not phase1_runs.empty and "seed" in phase1_runs.columns:
+                filtered_seed = phase1_runs[phase1_runs["seed"] == seed]
+                if not filtered_seed.empty:
+                    phase1_runs = filtered_seed
+
             if not phase1_runs.empty:
                 best_row = phase1_runs.sort_values(by="val_f1", ascending=False).iloc[0]
                 ckpt_p = Path(best_row["checkpoint_path"])
@@ -112,7 +123,7 @@ def find_best_phase1_checkpoint(
                         "val_f1": float(best_row.get("val_f1", 0.0)),
                     }
                     logger.info(
-                        f"Found best Phase 1 checkpoint from runs.csv (val_f1={baseline_metrics['val_f1']}): {ckpt_p}"
+                        f"Found best Phase 1 checkpoint from runs.csv (backbone={backbone}, val_f1={baseline_metrics['val_f1']}): {ckpt_p}"
                     )
                     return ckpt_p, baseline_metrics
         except Exception as err:
@@ -121,7 +132,8 @@ def find_best_phase1_checkpoint(
     # 3. Fallback to scanning checkpoints/phase1
     dir_p = Path(checkpoint_dir)
     if dir_p.exists():
-        ckpts = sorted(dir_p.glob("phase1-*.ckpt"), reverse=True)
+        glob_pattern = f"phase1-{backbone}-*.ckpt" if backbone else "phase1-*.ckpt"
+        ckpts = sorted(dir_p.glob(glob_pattern), reverse=True)
         if ckpts:
             return ckpts[0], baseline_metrics
         last_ckpt = dir_p / "last.ckpt"
@@ -129,7 +141,7 @@ def find_best_phase1_checkpoint(
             return last_ckpt, baseline_metrics
 
     raise FileNotFoundError(
-        "Could not locate any valid Phase 1 checkpoint. Run Phase 1 training first."
+        f"Could not locate any valid Phase 1 checkpoint for backbone '{backbone}'. Run Phase 1 training first."
     )
 
 
@@ -299,6 +311,7 @@ def train_phase2(
     smoke_test: bool = False,
     checkpoint_dir: Path | str = "checkpoints/phase2",
     seed: int | None = None,
+    backbone: str | None = None,
 ) -> tuple[WasteLightningModule, dict[str, Any], dict[str, float]]:
     """Execute Phase 2 fine-tuning: load Phase 1 checkpoint, unfreeze trailing layers, and train.
 
@@ -313,6 +326,7 @@ def train_phase2(
         smoke_test: If True, runs 1 epoch on minimal batches for fast verification.
         checkpoint_dir: Directory to save Phase 2 checkpoints.
         seed: Optional random seed override.
+        backbone: Optional backbone architecture override.
 
     Returns:
         Tuple of (trained WasteLightningModule, results dictionary, comparison dictionary).
@@ -332,7 +346,7 @@ def train_phase2(
     loss_cfg = cfg.get("loss", {})
     phase2_cfg = cfg.get("phase2", {})
 
-    active_backbone = model_cfg.get("backbone", "efficientnet_b0")
+    active_backbone = backbone or model_cfg.get("backbone", "efficientnet_b0")
     active_batch_size = batch_size or data_cfg.get("batch_size", 32)
     active_epochs = 1 if smoke_test else (epochs or phase2_cfg.get("epochs", 15))
     active_lr_backbone = lr_backbone or float(phase2_cfg.get("lr_backbone", 1e-5))
@@ -346,7 +360,9 @@ def train_phase2(
     num_workers = 0 if smoke_test else data_cfg.get("num_workers", 2)
 
     # 1. Locate and load Phase 1 checkpoint
-    ckpt_file, phase1_baseline = find_best_phase1_checkpoint(phase1_checkpoint)
+    ckpt_file, phase1_baseline = find_best_phase1_checkpoint(
+        phase1_checkpoint, backbone=active_backbone, seed=run_seed
+    )
     logger.info(f"Loading Phase 1 weights from checkpoint: {ckpt_file}")
     ckpt_data = torch.load(ckpt_file, map_location="cpu")
 

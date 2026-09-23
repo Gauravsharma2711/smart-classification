@@ -245,6 +245,8 @@ def evaluate_checkpoint(
     split: str = "test",
     output_dir: Path | str = "reports",
     device: str = "cpu",
+    backbone: str | None = None,
+    backbone_override: str | None = None,
 ) -> EvaluationResult:
     """Execute evaluation of a trained model checkpoint on the specified dataset split.
 
@@ -254,6 +256,8 @@ def evaluate_checkpoint(
         split: Dataset split to evaluate on ('test' or 'val').
         output_dir: Directory where evaluation artifacts will be written.
         device: Device to run evaluation on ('cpu' or 'cuda').
+        backbone: Optional backbone architecture name override.
+        backbone_override: Alias for backbone.
 
     Returns:
         Populated EvaluationResult object.
@@ -270,7 +274,7 @@ def evaluate_checkpoint(
 
     data_cfg = cfg.get("data", {})
     model_cfg = cfg.get("model", {})
-    backbone_name = model_cfg.get("backbone", "efficientnet_b0")
+    backbone_name = backbone_override or backbone or model_cfg.get("backbone", "efficientnet_b0")
     image_size = data_cfg.get("image_size", 224)
     batch_size = data_cfg.get("batch_size", 32)
     seed = cfg.get("seed", 42)
@@ -283,6 +287,7 @@ def evaluate_checkpoint(
             config_path=config_path,
             output_dir=output_dir,
             device=device,
+            backbone=backbone_name,
         )
 
     # 1. Setup DataModule and DataLoader
@@ -585,6 +590,8 @@ def evaluate_field_set(
     config_path: Path | str = "configs/base.yaml",
     output_dir: Path | str = "reports",
     device: str = "cpu",
+    backbone: str | None = None,
+    backbone_override: str | None = None,
 ) -> EvaluationResult:
     """Execute field-set camera-domain evaluation.
 
@@ -594,6 +601,8 @@ def evaluate_field_set(
         config_path: Path to configuration YAML file.
         output_dir: Directory where evaluation artifacts will be written.
         device: Device to run evaluation on ('cpu' or 'cuda').
+        backbone: Optional backbone architecture name override.
+        backbone_override: Alias for backbone.
 
     Returns:
         Populated EvaluationResult object.
@@ -614,7 +623,7 @@ def evaluate_field_set(
 
     data_cfg = cfg.get("data", {})
     model_cfg = cfg.get("model", {})
-    backbone_name = model_cfg.get("backbone", "efficientnet_b0")
+    backbone_name = backbone_override or backbone or model_cfg.get("backbone", "efficientnet_b0")
     image_size = data_cfg.get("image_size", 224)
     seed = cfg.get("seed", 42)
     conf_threshold = float(cfg.get("inference", {}).get("confidence_threshold", 0.60))
@@ -788,3 +797,7 @@ def evaluate_field_set(
     )
 
     return result
+
+
+# Public alias for checkpoint evaluation
+evaluate_model = evaluate_checkpoint
