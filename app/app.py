@@ -26,7 +26,8 @@ import gradio as gr
 import numpy as np
 from PIL import Image
 
-from waste_classifier.inference import PredictionResult, get_predictor
+from waste_classifier.explainability import GradCAMExplainer
+from waste_classifier.inference import CANONICAL_CLASSES, PredictionResult, get_predictor
 from waste_classifier.live import LiveCameraPipeline, LiveFrameResult
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -234,6 +235,42 @@ def reset_live_handler() -> tuple[str, dict[str, float], str, str]:
     return "Stabilizer Reset - Ready", prob_dict, bin_html, guidance_html
 
 
+_DEFAULT_EXPLAINER: GradCAMExplainer | None = None
+
+
+def get_explainer() -> GradCAMExplainer:
+    """Retrieve or initialize cached GradCAMExplainer instance."""
+    global _DEFAULT_EXPLAINER
+    if _DEFAULT_EXPLAINER is None:
+        _DEFAULT_EXPLAINER = GradCAMExplainer()
+    return _DEFAULT_EXPLAINER
+
+
+def explain_image_handler(
+    upload_img: Image.Image | None,
+    camera_img: Image.Image | None,
+    target_choice: str,
+) -> tuple[Image.Image | None, str]:
+    """Execute on-demand Grad-CAM computation for the active user image."""
+    active_img = upload_img if upload_img is not None else camera_img
+    if active_img is None:
+        return (
+            None,
+            "⚠️ **No image provided.** Please upload an image or take a camera snapshot first.",
+        )
+
+    target_cls = None if target_choice == "Top Prediction" else target_choice.lower().strip()
+    explainer = get_explainer()
+    res = explainer.explain(active_img, target_class=target_cls)
+
+    info_text = (
+        f"**Explained Target:** `{res.target_class.title()}` | "
+        f"**Top Prediction:** `{res.predicted_class.title()}` ({res.predicted_prob * 100:.1f}%)\n\n"
+        f"*{res.disclaimer}*"
+    )
+    return res.overlay_image, info_text
+
+
 CUSTOM_CSS = """
 .app-header { text-align: center; margin-bottom: 1.5rem; }
 .privacy-notice { font-size: 0.85rem; color: #666; margin-top: 0.5rem; }
@@ -335,6 +372,28 @@ def create_app() -> gr.Blocks:
                     label="Bin Advice",
                 )
 
+                # Grad-CAM Explainability (FR-17) - On-Demand Only
+                with gr.Accordion("🔍 Explain Prediction (Grad-CAM Overlay)", open=False):
+                    gr.Markdown(
+                        "> **On-Demand Visual Interpretability:** Compute Grad-CAM convolutional saliency to inspect which "
+                        "visual regions contributed to the prediction. *Note: Grad-CAM is an interpretability visual aid, not proof of causal reasoning.*"
+                    )
+                    with gr.Row():
+                        explain_target_dropdown = gr.Dropdown(
+                            choices=["Top Prediction"] + [c.title() for c in CANONICAL_CLASSES],
+                            value="Top Prediction",
+                            label="Explain Class Target (Predicted or Counterfactual)",
+                        )
+                        explain_btn = gr.Button("🔬 Generate Grad-CAM Heatmap", variant="secondary")
+                    cam_output = gr.Image(
+                        type="pil",
+                        label="Grad-CAM Saliency Overlay",
+                        interactive=False,
+                    )
+                    cam_info = gr.Markdown(
+                        "*Click 'Generate Grad-CAM Heatmap' above to explain the currently selected or uploaded image.*"
+                    )
+
         # Bottom Section: About and Transparency Tab
         with gr.Accordion("ℹ️ Model Details, Benchmark Metrics & Real-World Domain Gap", open=False):
             gr.Markdown(
@@ -397,6 +456,13 @@ def create_app() -> gr.Blocks:
             fn=reset_live_handler,
             inputs=[],
             outputs=[status_output, chart_output, bin_output, guidance_output],
+        )
+
+        # 4. Grad-CAM Explain Action (FR-17) - On-Demand
+        explain_btn.click(
+            fn=explain_image_handler,
+            inputs=[upload_input, camera_input, explain_target_dropdown],
+            outputs=[cam_output, cam_info],
         )
 
     return demo

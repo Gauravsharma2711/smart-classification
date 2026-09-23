@@ -150,3 +150,23 @@ def test_reset_live_handler() -> None:
     assert "Stabilizer Reset" in status
     assert prob_dict == {}
     assert "STANDBY" in guidance_html
+
+
+def test_explain_image_handler_none() -> None:
+    """Verify explain_image_handler handles empty inputs without crashing."""
+    from app.app import explain_image_handler
+
+    cam_img, info_text = explain_image_handler(None, None, "Top Prediction")
+    assert cam_img is None
+    assert "No image provided" in info_text
+
+
+def test_explain_image_handler_valid(sample_pil_image: Image.Image) -> None:
+    """Verify explain_image_handler returns overlay PIL image and interpretability disclaimer."""
+    from app.app import explain_image_handler
+
+    cam_img, info_text = explain_image_handler(sample_pil_image, None, "Top Prediction")
+    assert isinstance(cam_img, Image.Image)
+    assert cam_img.size == sample_pil_image.size
+    assert "Explained Target:" in info_text
+    assert "disclaimer" in info_text.lower() or "causal" in info_text.lower()

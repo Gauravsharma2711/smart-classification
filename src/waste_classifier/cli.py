@@ -474,6 +474,79 @@ def app_cmd(
     launch_app(server_name=host, server_port=port, share=share)
 
 
+@app.command("explain")
+def explain_cmd(
+    image: Annotated[
+        Path | None,
+        typer.Option(
+            "--image",
+            "-i",
+            help="Path to input image file to explain.",
+        ),
+    ] = None,
+    target_class: Annotated[
+        str | None,
+        typer.Option(
+            "--target-class",
+            "-t",
+            help="Specific class to explain (defaults to model top prediction).",
+        ),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Path to save Grad-CAM overlay image.",
+        ),
+    ] = None,
+    generate_report: Annotated[
+        bool,
+        typer.Option(
+            "--generate-report",
+            help="Generate full Grad-CAM figures and README report under reports/gradcam/.",
+        ),
+    ] = False,
+) -> None:
+    """Generate on-demand Grad-CAM visual explanation for a waste photo (FR-17)."""
+    from PIL import Image
+
+    from waste_classifier.explainability import GradCAMExplainer, generate_gradcam_report_samples
+
+    if generate_report:
+        console.print(
+            "[bold cyan]Generating Grad-CAM report figures in reports/gradcam/...[/bold cyan]"
+        )
+        saved = generate_gradcam_report_samples()
+        console.print(
+            f"[bold green]Successfully generated {len(saved)} figures in reports/gradcam/[/bold green]"
+        )
+        return
+
+    if image is None:
+        console.print("[bold red]Error: Please specify --image or --generate-report.[/bold red]")
+        raise typer.Exit(code=1)
+
+    if not image.exists():
+        console.print(f"[bold red]Error: Image file not found at {image}[/bold red]")
+        raise typer.Exit(code=1)
+
+    pil_img = Image.open(image)
+    explainer = GradCAMExplainer()
+    res = explainer.explain(pil_img, target_class=target_class)
+
+    console.print(
+        f"[bold green]Predicted Category:[/] {res.predicted_class} ({res.predicted_prob * 100:.1f}%)"
+    )
+    console.print(f"[bold cyan]Explained Target:[/] {res.target_class}")
+    console.print(f"[dim]{res.disclaimer}[/dim]")
+
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        res.overlay_image.save(output)
+        console.print(f"[bold green]Saved overlay to {output}[/bold green]")
+
+
 @app.command("export")
 def export_cmd(
     checkpoint: Annotated[
