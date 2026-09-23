@@ -440,6 +440,40 @@ def predict_cmd(
     console.print(bin_table)
 
 
+@app.command("app")
+def app_cmd(
+    host: Annotated[
+        str,
+        typer.Option(
+            "--host",
+            help="Server host address to bind.",
+        ),
+    ] = "127.0.0.1",
+    port: Annotated[
+        int,
+        typer.Option(
+            "--port",
+            "-p",
+            help="Port to run the Gradio application.",
+        ),
+    ] = 7860,
+    share: Annotated[
+        bool,
+        typer.Option(
+            "--share",
+            help="Create a public Gradio share link.",
+        ),
+    ] = False,
+) -> None:
+    """Launch the Gradio web application for waste classification and bin recommendations."""
+    from app.app import launch_app
+
+    console.print(
+        f"[bold cyan]Launching Smart Waste Classifier on http://{host}:{port}...[/bold cyan]"
+    )
+    launch_app(server_name=host, server_port=port, share=share)
+
+
 @app.command("export")
 def export_cmd(
     checkpoint: Annotated[
