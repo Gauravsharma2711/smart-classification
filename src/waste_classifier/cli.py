@@ -329,6 +329,117 @@ def evaluate_cmd(
         console.print(f"  - Classification Report: {output_dir / 'classification_report.txt'}")
 
 
+@app.command("predict")
+def predict_cmd(
+    image_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to image file for classification.",
+        ),
+    ],
+    checkpoint: Annotated[
+        Path | None,
+        typer.Option(
+            "--checkpoint",
+            help="Path to model checkpoint (defaults to best available).",
+        ),
+    ] = None,
+    config: Annotated[
+        Path,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to YAML configuration file.",
+        ),
+    ] = Path("configs/base.yaml"),
+    top_k: Annotated[
+        int | None,
+        typer.Option(
+            "--top-k",
+            "-k",
+            help="Number of top candidate classes to display.",
+        ),
+    ] = None,
+    threshold: Annotated[
+        float | None,
+        typer.Option(
+            "--threshold",
+            "-t",
+            help="Confidence threshold for certainty gating.",
+        ),
+    ] = None,
+) -> None:
+    """Classify a single image and display predictions and bin recommendations."""
+    from PIL import Image
+
+    from waste_classifier.inference import predict
+
+    if not image_path.exists():
+        console.print(f"[bold red]Error: Image not found at {image_path}[/bold red]")
+        raise typer.Exit(code=1)
+
+    try:
+        with Image.open(image_path) as pil_img:
+            img = pil_img.copy()
+    except Exception as err:
+        console.print(f"[bold red]Error: Could not open image {image_path}: {err}[/bold red]")
+        raise typer.Exit(code=1) from err
+
+    console.print(f"[bold cyan]Running Inference on:[/bold cyan] {image_path}")
+
+    res = predict(
+        image=img,
+        checkpoint_path=checkpoint,
+        config_path=config,
+        top_k=top_k,
+        confidence_threshold=threshold,
+    )
+
+    status_color = "green" if res.is_confident else "yellow"
+    console.print(
+        f"\n[bold {status_color}]Result: {res.top_class.upper()} "
+        f"({res.confidence * 100:.2f}% confidence)[/bold {status_color}]"
+    )
+    console.print(f"[dim]{res.guidance}[/dim]\n")
+
+    # Table of top-k candidates
+    table = Table(
+        title=f"Top-{len(res.predictions)} Predictions",
+        show_header=True,
+        header_style="bold magenta",
+    )
+    table.add_column("Rank", style="dim", justify="right")
+    table.add_column("Class", style="bold")
+    table.add_column("Probability", justify="right")
+    table.add_column("Recommended Bin")
+
+    for rank, item in enumerate(res.predictions, start=1):
+        prob_str = f"{item.probability * 100:.2f}%"
+        table.add_row(
+            str(rank),
+            item.class_name,
+            prob_str,
+            f"[{item.bin_color}]{item.bin_label}[/{item.bin_color}]",
+        )
+
+    console.print(table)
+
+    # Bin Advice Card
+    bin_table = Table(
+        title="Disposal Recommendation",
+        show_header=False,
+        border_style="cyan",
+    )
+    bin_table.add_column("Property", style="bold cyan")
+    bin_table.add_column("Details")
+
+    bin_table.add_row("Action Bin", f"[{res.bin_color}]{res.bin_name}[/{res.bin_color}]")
+    bin_table.add_row("Bin Label", f"[{res.bin_color}]{res.bin_label}[/{res.bin_color}]")
+    bin_table.add_row("Instructions", res.bin_instructions)
+
+    console.print(bin_table)
+
+
 @app.command("export")
 def export_cmd(
     checkpoint: Annotated[
