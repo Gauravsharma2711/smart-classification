@@ -4,10 +4,14 @@ Implements:
 - FR-10: Image Upload UI with instant classification.
 - FR-11: Camera Snapshot UI with webcam capture and graceful fallback.
 - FR-12: Smart Bin Recommendation with accessible text labels and instructions.
+- FR-13: Throttled Live Camera Mode (~4 FPS) with continuous real-time updates.
+- FR-14: Frame smoothing and stability confirmation (K-frame stability).
+- FR-15: Quality gating (detect blur "Hold steady" and low light "Too dark").
+- FR-16: Uncertainty and no-item handling ("Point the camera at an item").
 
 Architecture rules:
 - Strictly decoupled: zero ML model / PyTorch forward-pass logic in the UI layer.
-- Strictly in-memory: images and frames are never saved to disk.
+- Strictly in-memory: images and video frames are never saved to disk.
 - Accessibility compliance: every color indicator is accompanied by an explicit text label.
 """
 
@@ -19,15 +23,27 @@ from pathlib import Path
 from typing import Any
 
 import gradio as gr
+import numpy as np
 from PIL import Image
 
 from waste_classifier.inference import PredictionResult, get_predictor
+from waste_classifier.live import LiveCameraPipeline, LiveFrameResult
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
 REPORTS_DIR = Path("reports")
 RAW_DATA_DIR = Path("data/raw")
+
+_DEFAULT_LIVE_PIPELINE: LiveCameraPipeline | None = None
+
+
+def get_live_pipeline() -> LiveCameraPipeline:
+    """Retrieve or initialize the cached LiveCameraPipeline instance."""
+    global _DEFAULT_LIVE_PIPELINE
+    if _DEFAULT_LIVE_PIPELINE is None:
+        _DEFAULT_LIVE_PIPELINE = LiveCameraPipeline()
+    return _DEFAULT_LIVE_PIPELINE
 
 
 def load_report_summary() -> dict[str, Any]:
@@ -83,7 +99,7 @@ def get_available_examples() -> list[list[str]]:
     return examples[:6]
 
 
-def format_bin_card(res: PredictionResult) -> str:
+def format_bin_card(res: PredictionResult | LiveFrameResult) -> str:
     """Format accessible HTML card for bin disposal recommendation."""
     border_color = res.bin_color if res.bin_color else "#9E9E9E"
     badge_bg = res.bin_color if res.bin_color else "#616161"
@@ -108,7 +124,7 @@ def format_bin_card(res: PredictionResult) -> str:
 
 
 def format_guidance_card(res: PredictionResult) -> str:
-    """Format contextual user guidance notification."""
+    """Format contextual user guidance notification for single images."""
     if res.is_confident:
         bg = "#E8F5E9"
         border = "#A5D6A7"
@@ -128,13 +144,33 @@ def format_guidance_card(res: PredictionResult) -> str:
     """
 
 
+def format_live_guidance_card(res: LiveFrameResult) -> str:
+    """Format contextual live status badge and guidance card."""
+    return f"""
+    <div style="background-color: {res.badge_color}15; border: 1px solid {res.badge_color}60; border-radius: 6px;
+                padding: 12px; margin-top: 10px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="background-color: {res.badge_color}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 0.82rem; font-weight: 700;">
+                {res.badge_label}
+            </span>
+            <span style="color: #222; font-size: 0.92rem; font-weight: 500;">
+                {res.guidance}
+            </span>
+        </div>
+        <div style="font-size: 0.80rem; color: #666; font-weight: 600;">
+            Target ~4 FPS Throttled
+        </div>
+    </div>
+    """
+
+
 def classify_image_handler(
     image: Image.Image | None,
 ) -> tuple[str, dict[str, float], str, str]:
-    """Execute classification and format UI outputs.
+    """Execute classification on single image and format UI outputs.
 
     Args:
-        image: User-provided PIL Image from Upload or Webcam.
+        image: User-provided PIL Image from Upload or Webcam snapshot.
 
     Returns:
         Tuple of (header string, probabilities dict for gr.Label, bin card HTML, guidance HTML).
@@ -164,6 +200,40 @@ def classify_image_handler(
     return header, prob_dict, bin_html, guidance_html
 
 
+def live_frame_handler(
+    image: Image.Image | np.ndarray | None,
+) -> tuple[str, dict[str, float], str, str]:
+    """Execute live frame processing with throttling, quality check, and temporal smoothing.
+
+    Args:
+        image: Live frame from webcam stream.
+
+    Returns:
+        Tuple of (status header, probabilities dict for gr.Label, bin card HTML, guidance HTML).
+    """
+    pipeline = get_live_pipeline()
+    res = pipeline.process_frame(image, enforce_throttle=True)
+
+    prob_dict = {item.class_name: item.probability for item in res.top_predictions}
+    bin_html = format_bin_card(res)
+    guidance_html = format_live_guidance_card(res)
+
+    return res.status, prob_dict, bin_html, guidance_html
+
+
+def reset_live_handler() -> tuple[str, dict[str, float], str, str]:
+    """Reset live pipeline state and temporal smoother."""
+    pipeline = get_live_pipeline()
+    pipeline.reset()
+    res = pipeline.process_frame(None)
+
+    prob_dict: dict[str, float] = {}
+    bin_html = format_bin_card(res)
+    guidance_html = format_live_guidance_card(res)
+
+    return "Stabilizer Reset - Ready", prob_dict, bin_html, guidance_html
+
+
 CUSTOM_CSS = """
 .app-header { text-align: center; margin-bottom: 1.5rem; }
 .privacy-notice { font-size: 0.85rem; color: #666; margin-top: 0.5rem; }
@@ -191,7 +261,7 @@ def create_app() -> gr.Blocks:
             )
 
         with gr.Row():
-            # Left Column: Inputs (Upload or Camera Snapshot)
+            # Left Column: Inputs (Upload, Camera Snapshot, or Live Camera)
             with gr.Column(scale=5):
                 with gr.Tabs():
                     # Tab 1: Upload (FR-10)
@@ -227,21 +297,37 @@ def create_app() -> gr.Blocks:
                             camera_btn = gr.Button("📸 Classify Camera Snapshot", variant="primary")
                             clear_camera_btn = gr.Button("🗑️ Retake")
 
-            # Right Column: Results & Bin Recommendation (FR-12)
+                    # Tab 3: Live Camera Stream (FR-13 to FR-16)
+                    with gr.TabItem("🎥 Live Camera (Real-Time)", id="tab_live"):
+                        gr.Markdown(
+                            "> **Live Streaming Mode:** Real-time throttled inference (~4 FPS) with automated blur/brightness "
+                            "quality checks, center-crop targeting, and multi-frame temporal stabilization. "
+                            "If camera permission is denied, use the **Upload Image** tab."
+                        )
+                        live_input = gr.Image(
+                            sources=["webcam"],
+                            streaming=True,
+                            type="pil",
+                            label="Live Camera Stream (Keep Item in Center)",
+                        )
+                        with gr.Row():
+                            reset_live_btn = gr.Button("🔄 Reset Stabilizer State")
+
+            # Right Column: Results & Bin Recommendation (FR-12, FR-14, FR-15, FR-16)
             with gr.Column(scale=6):
                 gr.Markdown("### 📊 Classification Result")
                 status_output = gr.Textbox(
-                    label="Identified Waste Category",
+                    label="Identified Waste Category / Pipeline State",
                     placeholder="Result will appear here...",
                     interactive=False,
                 )
                 guidance_output = gr.HTML(
-                    value="<div style='color: #888;'>Upload an image or snap a photo to begin.</div>",
+                    value="<div style='color: #888;'>Upload an image, snap a photo, or start live camera to begin.</div>",
                     label="Status Guidance",
                 )
                 chart_output = gr.Label(
                     num_top_classes=3,
-                    label="Top-3 Predictions (Confidence)",
+                    label="Top Predictions (Confidence)",
                 )
                 gr.Markdown("### 🗂️ Disposal Recommendation")
                 bin_output = gr.HTML(
@@ -258,6 +344,8 @@ def create_app() -> gr.Blocks:
                 - **Clean Benchmark Test Accuracy:** `{summary_metrics["test_accuracy"]}` (Macro-F1: `{summary_metrics["test_macro_f1"]}`).
                 - **Authentic Camera Field-Set Accuracy:** `{summary_metrics["field_accuracy"]}` (Macro-F1: `{summary_metrics["field_macro_f1"]}`).
                 - **Negative Non-Waste Uncertainty Rejection Rate:** `{summary_metrics["negative_rejection"]}` (rejection threshold = 0.60).
+                - **Live Stabilization:** Sliding window probability averaging (N=5) and stability confirmation (K=3 consecutive frames) suppress camera noise.
+                - **Live Quality Gate:** Computes Laplacian edge variance (min blur score 60) and mean intensity (min brightness 50), providing *'Hold steady'* or *'Too dark'* hints instead of guessing.
                 - **Domain Gap Note:** Real-world camera images exhibit specular highlights on plastics, shadows, and crumpled cardboard geometry. When confidence drops below 60%, the classifier flags the item as uncertain and instructs manual inspection.
                 """
             )
@@ -297,6 +385,20 @@ def create_app() -> gr.Blocks:
             outputs=[camera_input, status_output, chart_output, bin_output, guidance_output],
         )
 
+        # 3. Live Camera Tab Actions (FR-13 to FR-16)
+        live_input.stream(
+            fn=live_frame_handler,
+            inputs=[live_input],
+            outputs=[status_output, chart_output, bin_output, guidance_output],
+            stream_every=0.25,
+            show_progress="hidden",
+        )
+        reset_live_btn.click(
+            fn=reset_live_handler,
+            inputs=[],
+            outputs=[status_output, chart_output, bin_output, guidance_output],
+        )
+
     return demo
 
 
@@ -308,6 +410,8 @@ def launch_app(
     """Launch the Gradio web application."""
     logger.info("Initializing Waste Classifier Predictor...")
     get_predictor()
+    logger.info("Initializing Live Camera Pipeline...")
+    get_live_pipeline()
     app = create_app()
     logger.info(f"Starting server on http://{server_name}:{server_port}")
     app.launch(

@@ -3,6 +3,7 @@ live:
   smoothing_window: 5
   stable_frames: 3
   confidence_threshold: 0.6
+  crop_ratio: 0.8
   quality:
     min_blur_score: 60      # variance of Laplacian; tune on your own frames
     min_brightness: 50      # mean pixel value 0-255; tune on your own frames

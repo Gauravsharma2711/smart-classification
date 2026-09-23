@@ -118,3 +118,35 @@ def test_in_memory_privacy_preservation(sample_pil_image: Image.Image, tmp_path:
     # No new files created in root directory
     diff = files_after - files_before
     assert len(diff) == 0, f"Unexpected files written to disk during inference: {diff}"
+
+
+def test_live_frame_handler_none() -> None:
+    """Verify live_frame_handler handles None gracefully without errors."""
+    from app.app import live_frame_handler
+
+    status, prob_dict, bin_html, guidance_html = live_frame_handler(None)
+    assert status == "Awaiting Camera..."
+    assert prob_dict == {}
+    assert "STANDBY" in guidance_html
+    assert "Instructions:" in bin_html
+
+
+def test_live_frame_handler_valid(sample_pil_image: Image.Image) -> None:
+    """Verify live_frame_handler processes incoming frame and returns live badges."""
+    from app.app import live_frame_handler
+
+    status, prob_dict, bin_html, guidance_html = live_frame_handler(sample_pil_image)
+    assert isinstance(status, str)
+    assert isinstance(prob_dict, dict)
+    assert "Instructions:" in bin_html
+    assert "Target ~4 FPS" in guidance_html
+
+
+def test_reset_live_handler() -> None:
+    """Verify reset_live_handler clears live pipeline state."""
+    from app.app import reset_live_handler
+
+    status, prob_dict, bin_html, guidance_html = reset_live_handler()
+    assert "Stabilizer Reset" in status
+    assert prob_dict == {}
+    assert "STANDBY" in guidance_html
