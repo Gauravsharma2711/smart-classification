@@ -757,5 +757,157 @@ def export_cmd(
     )
 
 
+@app.command("experiments")
+def experiments_cmd(
+    inspect_run: Annotated[
+        Path | None,
+        typer.Option(
+            "--inspect",
+            "-i",
+            help="Path to an experiment directory or metadata.json to inspect.",
+        ),
+    ] = None,
+    reproduce_run: Annotated[
+        Path | None,
+        typer.Option(
+            "--reproduce",
+            "-r",
+            help="Path to an experiment run to recover configuration from.",
+        ),
+    ] = None,
+    output_config: Annotated[
+        Path,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Path to output recovered YAML configuration.",
+        ),
+    ] = Path("configs/reproduced.yaml"),
+) -> None:
+    """Inspect and manage tracked experiments and verify reproducibility (FR-22)."""
+    from waste_classifier.tracking import (
+        list_tracked_experiments,
+        load_experiment_metadata,
+        reproduce_experiment_config,
+        verify_experiment_integrity,
+    )
+
+    if inspect_run:
+        console.print(f"[bold cyan]Inspecting Experiment Metadata from:[/] {inspect_run}")
+        meta = load_experiment_metadata(inspect_run)
+        valid, issues = verify_experiment_integrity(meta)
+
+        table = Table(
+            title="Experiment Provenance & Reproducibility Audit",
+            show_header=True,
+            header_style="bold magenta",
+        )
+        table.add_column("Mandatory Requirement", style="bold")
+        table.add_column("Recorded Value", style="cyan")
+        table.add_column("Audit Status", justify="center")
+
+        table.add_row(
+            "1. Configuration",
+            f"{meta.get('config_name')} ({len(meta.get('configuration', {}))} keys)",
+            "[green]PASS[/green]" if meta.get("configuration") else "[red]FAIL[/red]",
+        )
+        table.add_row(
+            "2. Random Seed",
+            str(meta.get("seed")),
+            "[green]PASS[/green]" if isinstance(meta.get("seed"), int) else "[red]FAIL[/red]",
+        )
+        table.add_row(
+            "3. Metrics",
+            f"val_f1={meta.get('metrics', {}).get('val_f1', 0.0):.4f}",
+            "[green]PASS[/green]" if meta.get("metrics") else "[red]FAIL[/red]",
+        )
+        table.add_row(
+            "4. Model Backbone",
+            str(meta.get("backbone")),
+            "[green]PASS[/green]" if meta.get("backbone") else "[red]FAIL[/red]",
+        )
+        table.add_row(
+            "5. Git Commit",
+            str(meta.get("git_commit")),
+            "[green]PASS[/green]" if meta.get("git_commit") else "[red]FAIL[/red]",
+        )
+        table.add_row(
+            "6. Training Phase",
+            f"Phase {meta.get('phase')}",
+            "[green]PASS[/green]" if meta.get("phase") in (1, 2) else "[red]FAIL[/red]",
+        )
+        table.add_row(
+            "7. Timestamp",
+            str(meta.get("timestamp")),
+            "[green]PASS[/green]" if meta.get("timestamp") else "[red]FAIL[/red]",
+        )
+        table.add_row(
+            "8. Dataset Split",
+            f"{meta.get('dataset_split')} (cksum: {meta.get('dataset_split_checksum', 'N/A')})",
+            "[green]PASS[/green]" if meta.get("dataset_split") else "[red]FAIL[/red]",
+        )
+
+        console.print(table)
+        if valid:
+            console.print(
+                "[bold green]All 8 provenance criteria satisfied! Experiment is 100% reproducible.[/bold green]"
+            )
+        else:
+            console.print("[bold red]Audit issues detected:[/bold red]")
+            for issue in issues:
+                console.print(f"  - [red]{issue}[/red]")
+        return
+
+    if reproduce_run:
+        console.print(f"[bold cyan]Recovering Configuration from:[/] {reproduce_run}")
+        recovered = reproduce_experiment_config(reproduce_run, output_path=output_config)
+        console.print(
+            f"[bold green]Successfully recovered configuration into {output_config}![/bold green]"
+        )
+        console.print(f"[dim]Top-level config sections: {list(recovered.keys())}[/dim]")
+        return
+
+    # Default: List all tracked experiments
+    runs = list_tracked_experiments()
+    table = Table(
+        title="Tracked Machine Learning Experiments (FR-22 Provenance Log)",
+        show_header=True,
+        header_style="bold magenta",
+    )
+    table.add_column("Timestamp", style="dim")
+    table.add_column("Phase", justify="center")
+    table.add_column("Backbone", style="bold cyan")
+    table.add_column("Seed", justify="right")
+    table.add_column("Dataset Split")
+    table.add_column("Git Commit", style="yellow")
+    table.add_column("Val F1", justify="right", style="green")
+    table.add_column("Status", justify="center")
+
+    for r in runs:
+        val_f1 = (
+            r.get("metrics", {}).get("val_f1")
+            if isinstance(r.get("metrics"), dict)
+            else r.get("val_f1")
+        )
+        f1_str = f"{float(val_f1) * 100:.2f}%" if val_f1 is not None else "N/A"
+        status = r.get("status", "COMPLETED")
+        status_color = (
+            "green" if status == "COMPLETED" else ("red" if status == "FAILED" else "yellow")
+        )
+
+        table.add_row(
+            str(r.get("timestamp", ""))[:19],
+            f"P{r.get('phase', '')}",
+            str(r.get("backbone", "")),
+            str(r.get("seed", "")),
+            str(r.get("dataset_split", "data/splits.csv")),
+            str(r.get("git_commit", "")),
+            f1_str,
+            f"[{status_color}]{status}[/{status_color}]",
+        )
+
+    console.print(table)
+
+
 if __name__ == "__main__":
     app()

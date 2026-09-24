@@ -27,6 +27,8 @@ dependencies = [
     "gradio>=4.20.0",
     "typer>=0.9.0",
 ]
+[project.scripts]
+waste-classifier = "waste_classifier.cli:app"
 
 [project.optional-dependencies]
 dev = [

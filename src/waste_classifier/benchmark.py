@@ -207,6 +207,7 @@ def run_single_benchmark_run(
         f"epochs={effective_epochs}, batch_size={batch_size}"
     )
 
+    run_csv_dest = (ckpt_dir / "runs.csv") if smoke_test else "reports/runs.csv"
     _, train_results = train_phase1(
         config_path=config_path,
         backbone=backbone,
@@ -215,6 +216,7 @@ def run_single_benchmark_run(
         batch_size=batch_size,
         smoke_test=smoke_test,
         checkpoint_dir=ckpt_dir,
+        runs_csv_path=run_csv_dest,
     )
 
     best_ckpt_path = Path(train_results["checkpoint_path"])

@@ -9,7 +9,6 @@ Implements:
 from __future__ import annotations
 
 import csv
-import datetime
 import logging
 import subprocess
 from pathlib import Path
@@ -25,6 +24,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from waste_classifier.data.datamodule import WasteDataModule
 from waste_classifier.models.factory import create_model
 from waste_classifier.models.module import WasteLightningModule
+from waste_classifier.tracking import RUNS_CSV_FIELDNAMES, ExperimentTracker
 
 logger = logging.getLogger(__name__)
 
@@ -47,28 +47,22 @@ def log_run_to_csv(
     run_record: dict[str, Any],
     csv_path: Path | str = "reports/runs.csv",
 ) -> None:
-    """Append a training run record to reports/runs.csv."""
+    """Append a training run record to reports/runs.csv with full provenance."""
     path = Path(csv_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = [
-        "timestamp",
-        "git_commit",
-        "config_name",
-        "phase",
-        "backbone",
-        "seed",
-        "epochs",
-        "val_loss",
-        "val_acc",
-        "val_f1",
-        "checkpoint_path",
-    ]
     file_exists = path.exists()
+
+    record = dict(run_record)
+    if "dataset_split" not in record:
+        record["dataset_split"] = "data/splits.csv"
+    if "status" not in record:
+        record["status"] = "COMPLETED"
+
     with open(path, "a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=RUNS_CSV_FIELDNAMES)
         if not file_exists:
             writer.writeheader()
-        writer.writerow(run_record)
+        writer.writerow(record)
     logger.info(f"Recorded run summary in {path}")
 
 
@@ -154,6 +148,7 @@ def train_phase1(
     smoke_test: bool = False,
     checkpoint_dir: Path | str = "checkpoints/phase1",
     seed: int | None = None,
+    runs_csv_path: Path | str = "reports/runs.csv",
 ) -> tuple[WasteLightningModule, dict[str, Any]]:
     """Execute Phase 1 training: freeze backbone and train classifier head.
 
@@ -166,6 +161,7 @@ def train_phase1(
         smoke_test: If True, runs 1 epoch on minimal batches for fast verification.
         checkpoint_dir: Directory to save checkpoints.
         seed: Optional random seed override.
+        runs_csv_path: Optional path to CSV file tracking runs.
 
     Returns:
         Tuple of (trained WasteLightningModule, results dictionary).
@@ -265,8 +261,24 @@ def train_phase1(
         trainer_kwargs["limit_train_batches"] = 2
         trainer_kwargs["limit_val_batches"] = 2
 
+    tracker = ExperimentTracker(
+        config=cfg,
+        config_path=cfg_p,
+        phase=1,
+        backbone=active_backbone,
+        seed=run_seed,
+        dataset_split=data_cfg.get("manifest", "data/splits.csv"),
+        epochs=active_epochs,
+        tb_logger=tb_logger,
+        runs_csv_path=runs_csv_path,
+    )
+
     trainer = pl.Trainer(**trainer_kwargs)
-    trainer.fit(module, datamodule=datamodule)
+    try:
+        trainer.fit(module, datamodule=datamodule)
+    except Exception as err:
+        tracker.end_run(status="FAILED", error_message=str(err))
+        raise
 
     # Extract final validation metrics
     val_metrics = trainer.callback_metrics
@@ -281,21 +293,26 @@ def train_phase1(
     )
 
     results = {
-        "timestamp": datetime.datetime.now().isoformat(),
-        "git_commit": get_git_commit_hash(),
+        "timestamp": tracker.timestamp,
+        "git_commit": tracker.git_commit,
         "config_name": cfg_p.name,
         "phase": 1,
         "backbone": active_backbone,
         "seed": run_seed,
+        "dataset_split": str(data_cfg.get("manifest", "data/splits.csv")),
         "epochs": active_epochs,
         "val_loss": round(val_loss, 4),
         "val_acc": round(val_acc, 4),
         "val_f1": round(val_f1, 4),
         "checkpoint_path": best_model_path or str(ckpt_path / "last.ckpt"),
+        "status": "COMPLETED",
     }
 
-    if not smoke_test:
-        log_run_to_csv(results)
+    tracker.end_run(
+        status="COMPLETED",
+        metrics={"val_loss": val_loss, "val_acc": val_acc, "val_f1": val_f1},
+        checkpoint_path=results["checkpoint_path"],
+    )
 
     return module, results
 
@@ -312,6 +329,7 @@ def train_phase2(
     checkpoint_dir: Path | str = "checkpoints/phase2",
     seed: int | None = None,
     backbone: str | None = None,
+    runs_csv_path: Path | str = "reports/runs.csv",
 ) -> tuple[WasteLightningModule, dict[str, Any], dict[str, float]]:
     """Execute Phase 2 fine-tuning: load Phase 1 checkpoint, unfreeze trailing layers, and train.
 
@@ -327,6 +345,7 @@ def train_phase2(
         checkpoint_dir: Directory to save Phase 2 checkpoints.
         seed: Optional random seed override.
         backbone: Optional backbone architecture override.
+        runs_csv_path: Optional path to CSV file tracking runs.
 
     Returns:
         Tuple of (trained WasteLightningModule, results dictionary, comparison dictionary).
@@ -458,8 +477,24 @@ def train_phase2(
         trainer_kwargs["limit_train_batches"] = 2
         trainer_kwargs["limit_val_batches"] = 2
 
+    tracker = ExperimentTracker(
+        config=cfg,
+        config_path=cfg_p,
+        phase=2,
+        backbone=active_backbone,
+        seed=run_seed,
+        dataset_split=data_cfg.get("manifest", "data/splits.csv"),
+        epochs=active_epochs,
+        tb_logger=tb_logger,
+        runs_csv_path=runs_csv_path,
+    )
+
     trainer = pl.Trainer(**trainer_kwargs)
-    trainer.fit(module, datamodule=datamodule)
+    try:
+        trainer.fit(module, datamodule=datamodule)
+    except Exception as err:
+        tracker.end_run(status="FAILED", error_message=str(err))
+        raise
 
     # Extract final validation metrics
     val_metrics = trainer.callback_metrics
@@ -491,20 +526,25 @@ def train_phase2(
     }
 
     results = {
-        "timestamp": datetime.datetime.now().isoformat(),
-        "git_commit": get_git_commit_hash(),
+        "timestamp": tracker.timestamp,
+        "git_commit": tracker.git_commit,
         "config_name": cfg_p.name,
         "phase": 2,
         "backbone": active_backbone,
         "seed": run_seed,
+        "dataset_split": str(data_cfg.get("manifest", "data/splits.csv")),
         "epochs": active_epochs,
         "val_loss": round(val_loss, 4),
         "val_acc": round(val_acc, 4),
         "val_f1": round(val_f1, 4),
         "checkpoint_path": best_model_path or str(ckpt_path / "last.ckpt"),
+        "status": "COMPLETED",
     }
 
-    if not smoke_test:
-        log_run_to_csv(results)
+    tracker.end_run(
+        status="COMPLETED",
+        metrics={"val_loss": val_loss, "val_acc": val_acc, "val_f1": val_f1},
+        checkpoint_path=results["checkpoint_path"],
+    )
 
     return module, results, comparison

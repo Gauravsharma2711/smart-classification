@@ -267,10 +267,12 @@ def test_phase2_smoke_training(tmp_path: Path) -> None:
     p2_dir = tmp_path / "p2"
 
     # Quick 1-batch smoke Phase 1 to produce a valid checkpoint
+    smoke_runs_csv = tmp_path / "runs.csv"
     _, p1_results = train_phase1(
         epochs=1,
         smoke_test=True,
         checkpoint_dir=p1_dir,
+        runs_csv_path=smoke_runs_csv,
     )
     p1_ckpt = p1_results["checkpoint_path"]
 
@@ -280,6 +282,7 @@ def test_phase2_smoke_training(tmp_path: Path) -> None:
         epochs=1,
         smoke_test=True,
         checkpoint_dir=p2_dir,
+        runs_csv_path=smoke_runs_csv,
     )
 
     assert p2_results["phase"] == 2
