@@ -20,16 +20,29 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import sys
 from pathlib import Path
 from typing import Any
 
-import gradio as gr
-import numpy as np
-from PIL import Image
+# Ensure project root and src/ are in sys.path for direct script execution
+_project_root = Path(__file__).resolve().parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+_src_dir = _project_root / "src"
+if str(_src_dir) not in sys.path:
+    sys.path.insert(0, str(_src_dir))
 
-from waste_classifier.explainability import GradCAMExplainer
-from waste_classifier.inference import CANONICAL_CLASSES, PredictionResult, get_predictor
-from waste_classifier.live import LiveCameraPipeline, LiveFrameResult
+import gradio as gr  # noqa: E402
+import numpy as np  # noqa: E402
+from PIL import Image  # noqa: E402
+
+from waste_classifier.explainability import GradCAMExplainer  # noqa: E402
+from waste_classifier.inference import (  # noqa: E402
+    CANONICAL_CLASSES,
+    PredictionResult,
+    get_predictor,
+)
+from waste_classifier.live import LiveCameraPipeline, LiveFrameResult  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)

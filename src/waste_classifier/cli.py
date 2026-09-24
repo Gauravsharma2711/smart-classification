@@ -442,6 +442,34 @@ def predict_cmd(
     console.print(bin_table)
 
 
+def _get_launch_app():
+    """Dynamically import launch_app ensuring sys.path contains project root and app dir."""
+    import sys
+    from pathlib import Path
+
+    project_root = Path(__file__).resolve().parent.parent.parent
+    cwd = Path.cwd()
+
+    for p in [cwd, project_root, project_root / "app", cwd / "app"]:
+        p_str = str(p.resolve())
+        if p.exists() and p_str not in sys.path:
+            sys.path.insert(0, p_str)
+
+    try:
+        from app.app import launch_app
+
+        return launch_app
+    except ModuleNotFoundError:
+        try:
+            from app import launch_app
+
+            return launch_app
+        except ModuleNotFoundError as err:
+            raise ImportError(
+                f"Could not import launch_app from app.app or app. sys.path={sys.path}"
+            ) from err
+
+
 @app.command("app")
 def app_cmd(
     host: Annotated[
@@ -468,12 +496,41 @@ def app_cmd(
     ] = False,
 ) -> None:
     """Launch the Gradio web application for waste classification and bin recommendations."""
-    from app.app import launch_app
+    launch_app = _get_launch_app()
 
     console.print(
         f"[bold cyan]Launching Smart Waste Classifier on http://{host}:{port}...[/bold cyan]"
     )
     launch_app(server_name=host, server_port=port, share=share)
+
+
+@app.command("serve")
+def serve_cmd(
+    host: Annotated[
+        str,
+        typer.Option(
+            "--host",
+            help="Server host address to bind.",
+        ),
+    ] = "127.0.0.1",
+    port: Annotated[
+        int,
+        typer.Option(
+            "--port",
+            "-p",
+            help="Port to run the Gradio application.",
+        ),
+    ] = 7860,
+    share: Annotated[
+        bool,
+        typer.Option(
+            "--share",
+            help="Create a public Gradio share link.",
+        ),
+    ] = False,
+) -> None:
+    """Alias for 'app': Launch the Gradio web application for waste classification."""
+    app_cmd(host=host, port=port, share=share)
 
 
 @app.command("deploy")
