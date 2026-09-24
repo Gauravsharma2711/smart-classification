@@ -170,3 +170,46 @@ def test_explain_image_handler_valid(sample_pil_image: Image.Image) -> None:
     assert cam_img.size == sample_pil_image.size
     assert "Explained Target:" in info_text
     assert "disclaimer" in info_text.lower() or "causal" in info_text.lower()
+
+
+def test_format_session_stats():
+    """Verify session stats formatting (FR-24)."""
+    from app.app import format_session_stats
+
+    stats = {"cardboard": 2, "plastic": 5, "metal": 1}
+    card_html = format_session_stats(stats)
+    assert "Items Sorted This Session:" in card_html
+    assert "8" in card_html
+    assert "Plastic:" in card_html
+
+
+def test_record_feedback_preserves_privacy(tmp_path: Path):
+    """Verify feedback logging records labels only, zero images (FR-24)."""
+    import json
+
+    from app.app import record_feedback
+
+    log_file = tmp_path / "feedback.jsonl"
+
+    # Test positive feedback
+    msg1 = record_feedback("PLASTIC (94.2%)", "CORRECT", "", log_path=log_file)
+    assert "correct" in msg1.lower()
+    assert "no image" in msg1.lower()
+
+    # Test correction feedback
+    msg2 = record_feedback("TRASH (51.0%)", "INCORRECT", "Cardboard", log_path=log_file)
+    assert "corrected" in msg2.lower()
+
+    # Verify JSONL lines contain strictly metadata and labels
+    lines = log_file.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 2
+
+    entry1 = json.loads(lines[0])
+    assert entry1["predicted_class"] == "plastic"
+    assert entry1["feedback"] == "CORRECT"
+    assert "image" not in entry1
+
+    entry2 = json.loads(lines[1])
+    assert entry2["predicted_class"] == "trash"
+    assert entry2["suggested_label"] == "cardboard"
+    assert "image" not in entry2

@@ -17,6 +17,7 @@ Architecture rules:
 
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 from pathlib import Path
@@ -305,6 +306,51 @@ def explain_image_handler(
         )
 
 
+DEFAULT_SESSION_STATS: dict[str, int] = {c: 0 for c in CANONICAL_CLASSES}
+
+
+def format_session_stats(stats: dict[str, int]) -> str:
+    """Format session statistics breakdown card (FR-24)."""
+    total = sum(stats.values())
+    badges = " ".join(
+        f"<span style='background: #f0f0f0; border: 1px solid #ddd; border-radius: 4px; padding: 2px 8px; margin: 2px; display: inline-block;'>"
+        f"<strong>{k.title()}:</strong> {v}</span>"
+        for k, v in stats.items()
+    )
+    return f"""
+    <div style='padding: 10px; border-radius: 6px; background: #fafafa; border: 1px solid #e0e0e0; font-size: 0.88rem;'>
+        <div style='margin-bottom: 6px;'><strong>Items Sorted This Session:</strong> {total}</div>
+        <div>{badges}</div>
+    </div>
+    """
+
+
+def record_feedback(
+    predicted_text: str,
+    feedback_type: str,
+    suggested_label: str,
+    log_path: Path | str = "reports/feedback.jsonl",
+) -> str:
+    """Record opt-in user feedback with zero image persistence (FR-24)."""
+    p = Path(log_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+
+    pred_cls = predicted_text.split(" ")[0].lower() if predicted_text else "unknown"
+    record = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "predicted_text": predicted_text,
+        "predicted_class": pred_cls,
+        "feedback": feedback_type,
+        "suggested_label": suggested_label.lower() if feedback_type == "INCORRECT" else pred_cls,
+    }
+    with open(p, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record) + "\n")
+
+    if feedback_type == "CORRECT":
+        return "✅ Thank you! Marked prediction as correct (label only, no image stored)."
+    return f"📝 Thank you! Feedback recorded: corrected to {suggested_label} (label only, no image stored)."
+
+
 CUSTOM_CSS = """
 .app-header { text-align: center; margin-bottom: 1.5rem; }
 .privacy-notice { font-size: 0.85rem; color: #666; margin-top: 0.5rem; }
@@ -417,6 +463,27 @@ def create_app() -> gr.Blocks:
                     label="Bin Advice",
                 )
 
+                # Session Statistics & Feedback (FR-24)
+                with gr.Accordion("📈 Session Statistics & Feedback (FR-24)", open=False):
+                    gr.Markdown(
+                        "🔒 **Privacy Notice:** Feedback logs store predicted and corrected class labels only. "
+                        "**Images and camera frames are never saved.**"
+                    )
+                    gr.HTML(
+                        value=format_session_stats(DEFAULT_SESSION_STATS),
+                        label="Session Items",
+                    )
+                    with gr.Row():
+                        feedback_correct_btn = gr.Button("👍 Correct", variant="secondary")
+                        feedback_incorrect_btn = gr.Button("👎 Incorrect", variant="secondary")
+                    with gr.Row():
+                        correction_dropdown = gr.Dropdown(
+                            choices=[c.title() for c in CANONICAL_CLASSES],
+                            value="Plastic",
+                            label="Actual Category (If Incorrect)",
+                        )
+                    feedback_status = gr.Markdown("")
+
                 # Grad-CAM Explainability (FR-17) - On-Demand Only
                 with gr.Accordion("🔍 Explain Prediction (Grad-CAM Overlay)", open=False):
                     gr.Markdown(
@@ -508,6 +575,18 @@ def create_app() -> gr.Blocks:
             fn=explain_image_handler,
             inputs=[upload_input, camera_input, explain_target_dropdown],
             outputs=[cam_output, cam_info],
+        )
+
+        # 5. User Feedback Actions (FR-24)
+        feedback_correct_btn.click(
+            fn=lambda st: record_feedback(st, "CORRECT", ""),
+            inputs=[status_output],
+            outputs=[feedback_status],
+        )
+        feedback_incorrect_btn.click(
+            fn=lambda st, corr: record_feedback(st, "INCORRECT", corr),
+            inputs=[status_output, correction_dropdown],
+            outputs=[feedback_status],
         )
 
     return demo
