@@ -635,12 +635,12 @@ def benchmark_cmd(
 @app.command("export")
 def export_cmd(
     checkpoint: Annotated[
-        Path,
+        Path | None,
         typer.Option(
             "--checkpoint",
-            help="Path to model checkpoint.",
+            help="Path to model checkpoint (defaults to best available).",
         ),
-    ] = Path("checkpoints/phase1/last.ckpt"),
+    ] = None,
     output: Annotated[
         Path,
         typer.Option(
@@ -649,10 +649,112 @@ def export_cmd(
             help="Path to output ONNX file.",
         ),
     ] = Path("models/model.onnx"),
+    config: Annotated[
+        Path,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to configuration YAML file.",
+        ),
+    ] = Path("configs/base.yaml"),
+    backbone: Annotated[
+        str | None,
+        typer.Option(
+            "--backbone",
+            "-b",
+            help="Backbone architecture override.",
+        ),
+    ] = None,
+    tolerance: Annotated[
+        float,
+        typer.Option(
+            "--tolerance",
+            "-t",
+            help="Maximum allowable absolute numerical difference for parity.",
+        ),
+    ] = 1e-4,
+    opset: Annotated[
+        int,
+        typer.Option(
+            "--opset",
+            help="ONNX operator set version.",
+        ),
+    ] = 17,
 ) -> None:
-    """Export PyTorch checkpoint to ONNX format."""
-    console.print("[yellow]Export module (FR-21) will be executed.[/yellow]")
-    raise typer.Exit(code=0)
+    """Export PyTorch checkpoint to ONNX format with numerical parity verification (FR-21)."""
+    from waste_classifier.export import export_and_verify
+
+    console.print(
+        "[bold cyan]Initiating Model Export to ONNX with Numerical Parity Check (FR-21)...[/bold cyan]"
+    )
+
+    try:
+        onnx_file, meta = export_and_verify(
+            checkpoint_path=checkpoint,
+            output_path=output,
+            config_path=config,
+            backbone=backbone,
+            tolerance=tolerance,
+            opset_version=opset,
+        )
+    except Exception as err:
+        console.print(f"[bold red]Export Failed: {err}[/bold red]")
+        raise typer.Exit(code=1) from err
+
+    # 1. Parity Table
+    p_table = Table(
+        title="ONNX Export & Numerical Parity Verification Summary",
+        show_header=True,
+        header_style="bold magenta",
+    )
+    p_table.add_column("Property", style="dim")
+    p_table.add_column("Value", style="bold")
+
+    status_str = (
+        "[bold green]PASSED[/bold green]" if meta.parity_passed else "[bold red]FAILED[/bold red]"
+    )
+    p_table.add_row("Parity Status", status_str)
+    p_table.add_row("Backbone", meta.backbone)
+    p_table.add_row("Source Checkpoint", meta.checkpoint_path)
+    p_table.add_row("Exported ONNX Binary", str(onnx_file))
+    p_table.add_row("Model Size", f"{meta.model_size_mb:.2f} MB")
+    p_table.add_row("ONNX Opset", str(meta.opset_version))
+    p_table.add_row("Configured Tolerance", f"{meta.tolerance:.1e}")
+    p_table.add_row("Observed Max Difference", f"{meta.max_absolute_difference:.2e}")
+    p_table.add_row("Test Cases Verified", str(meta.num_test_cases))
+
+    console.print(p_table)
+
+    # 2. Latency Table
+    l_table = Table(
+        title="ONNX Runtime CPU Inference Latency Benchmark",
+        show_header=True,
+        header_style="bold cyan",
+    )
+    l_table.add_column("Metric", style="dim")
+    l_table.add_column("Measurement", style="bold green", justify="right")
+
+    sla_met = meta.latency_ms_mean <= 100.0
+    sla_str = (
+        "[bold green]PASSED (<= 100 ms)[/bold green]"
+        if sla_met
+        else "[bold yellow]MARGINAL (> 100 ms)[/bold yellow]"
+    )
+
+    l_table.add_row(
+        "Latency Mean ± Std", f"{meta.latency_ms_mean:.2f} ± {meta.latency_ms_std:.2f} ms"
+    )
+    l_table.add_row("Latency Median (p50)", f"{meta.latency_ms_p50:.2f} ms")
+    l_table.add_row("Latency 95th Percentile (p95)", f"{meta.latency_ms_p95:.2f} ms")
+    l_table.add_row("Latency 99th Percentile (p99)", f"{meta.latency_ms_p99:.2f} ms")
+    l_table.add_row("Inference Throughput", f"{meta.throughput_fps:.1f} FPS")
+    l_table.add_row("Production Latency SLA", sla_str)
+
+    console.print(l_table)
+
+    console.print(
+        "[bold green]Export complete! Metadata and report written to reports/[/bold green]"
+    )
 
 
 if __name__ == "__main__":
