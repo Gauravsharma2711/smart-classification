@@ -177,30 +177,45 @@ class WasteClassifierPredictor:
         self.bin_mapping = load_bin_mapping(bin_mapping_path)
 
         # 4. Resolve Checkpoint and Load Model
-        self.checkpoint_path = find_best_evaluation_checkpoint(checkpoint_path)
-        logger.info(f"Loading inference model checkpoint from: {self.checkpoint_path}")
+        # 4. Resolve Checkpoint and Load Model
+        try:
+            self.checkpoint_path = find_best_evaluation_checkpoint(checkpoint_path)
+            logger.info(f"Loading inference model checkpoint from: {self.checkpoint_path}")
 
-        self.model = create_model(
-            backbone_name=self.backbone_name,
-            num_classes=self.num_classes,
-            pretrained=False,
-            dropout=float(model_cfg.get("dropout", 0.3)),
-        )
+            self.model = create_model(
+                backbone_name=self.backbone_name,
+                num_classes=self.num_classes,
+                pretrained=False,
+                dropout=float(model_cfg.get("dropout", 0.3)),
+            )
 
-        ckpt_data = torch.load(self.checkpoint_path, map_location="cpu")
-        model_state = {}
-        for k, v in ckpt_data["state_dict"].items():
-            if k.startswith("model."):
-                model_state[k[len("model.") :]] = v
-            elif (
-                not k.startswith("criterion.")
-                and not k.startswith("train_")
-                and not k.startswith("val_")
-                and k != "class_weights"
-            ):
-                model_state[k] = v
+            ckpt_data = torch.load(self.checkpoint_path, map_location="cpu")
+            model_state = {}
+            for k, v in ckpt_data["state_dict"].items():
+                if k.startswith("model."):
+                    model_state[k[len("model.") :]] = v
+                elif (
+                    not k.startswith("criterion.")
+                    and not k.startswith("train_")
+                    and not k.startswith("val_")
+                    and k != "class_weights"
+                ):
+                    model_state[k] = v
 
-        self.model.load_state_dict(model_state)
+            self.model.load_state_dict(model_state)
+        except FileNotFoundError as err:
+            logger.warning(
+                f"No fine-tuned model checkpoint found ({err}). "
+                f"Initializing {self.backbone_name} with pretrained backbone weights for deployment demonstration."
+            )
+            self.checkpoint_path = None
+            self.model = create_model(
+                backbone_name=self.backbone_name,
+                num_classes=self.num_classes,
+                pretrained=True,
+                dropout=float(model_cfg.get("dropout", 0.3)),
+            )
+
         self.model.to(self.device)
         self.model.eval()
 

@@ -14,6 +14,7 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 
 from waste_classifier.train import train_phase1, train_phase2
@@ -472,6 +473,50 @@ def app_cmd(
     console.print(
         f"[bold cyan]Launching Smart Waste Classifier on http://{host}:{port}...[/bold cyan]"
     )
+    launch_app(server_name=host, server_port=port, share=share)
+
+
+@app.command("deploy")
+def deploy_cmd(
+    host: Annotated[
+        str,
+        typer.Option(
+            "--host",
+            help="Server host address to bind (0.0.0.0 for external reachability).",
+        ),
+    ] = "0.0.0.0",
+    port: Annotated[
+        int,
+        typer.Option(
+            "--port",
+            "-p",
+            help="Port to run the Gradio application.",
+        ),
+    ] = 7860,
+    share: Annotated[
+        bool,
+        typer.Option(
+            "--share/--no-share",
+            help="Generate a secure public HTTPS link via Gradio tunnel (required for phone camera access).",
+        ),
+    ] = True,
+) -> None:
+    """Deploy the Gradio demo with HTTPS sharing for mobile and remote browser access (FR-20)."""
+    from app.app import launch_app
+
+    deploy_panel = Panel(
+        f"[bold green]Starting Smart Waste Classifier HTTPS Deployment (FR-20)[/bold green]\n\n"
+        f"• [bold]Local Binding:[/bold] http://{host}:{port}\n"
+        f"• [bold]HTTPS Public Tunnel:[/bold] {'Enabled (gradio.live)' if share else 'Disabled'}\n"
+        f"• [bold]Camera HTTPS Rule:[/bold] Mobile browsers strictly enforce HTTPS for camera access.\n"
+        f"• [bold]Privacy Guarantee:[/bold] Strictly in-memory ephemeral processing (zero disk persistence).\n\n"
+        f"[cyan]Testing on phone:[/cyan] Open the generated HTTPS URL on your phone browser (Safari/Chrome).\n"
+        f"Allow camera access when prompted. Center waste items in frame.",
+        title="♻️ Smart Waste Classifier Deployment",
+        border_style="green",
+    )
+    console.print(deploy_panel)
+
     launch_app(server_name=host, server_port=port, share=share)
 
 

@@ -190,15 +190,32 @@ def classify_image_handler(
         """
         return "No Image", {}, empty_bin, empty_guide
 
-    predictor = get_predictor()
-    res = predictor.predict(image)
+    try:
+        predictor = get_predictor()
+        res = predictor.predict(image)
 
-    header = f"{res.top_class.upper()} ({res.confidence * 100:.1f}%)"
-    prob_dict = {item.class_name: item.probability for item in res.predictions}
-    bin_html = format_bin_card(res)
-    guidance_html = format_guidance_card(res)
+        header = f"{res.top_class.upper()} ({res.confidence * 100:.1f}%)"
+        prob_dict = {item.class_name: item.probability for item in res.predictions}
+        bin_html = format_bin_card(res)
+        guidance_html = format_guidance_card(res)
 
-    return header, prob_dict, bin_html, guidance_html
+        return header, prob_dict, bin_html, guidance_html
+    except Exception as err:
+        logger.error(f"Error classifying image: {err}", exc_info=True)
+        error_bin = f"""
+        <div style="padding: 16px; border-radius: 8px; background: #FFEBEE; border: 1px solid #FFCDD2;
+                    color: #C62828; font-size: 0.95rem;">
+            <strong>⚠️ Classification Error:</strong> Unable to process the provided image.
+            <div style="margin-top: 6px; font-size: 0.85rem; color: #555;">{str(err)}</div>
+            <div style="margin-top: 8px; font-size: 0.85rem;">Please ensure the file is an undamaged image (JPEG, PNG, WEBP) and try again.</div>
+        </div>
+        """
+        error_guide = """
+        <div style="padding: 10px; border-radius: 6px; background: #FFF3E0; color: #E65100; font-size: 0.9rem;">
+            ⚠️ <strong>Guidance:</strong> If uploading fails, try taking a photo with the Camera Snapshot tab or checking camera permissions.
+        </div>
+        """
+        return "Classification Error", {}, error_bin, error_guide
 
 
 def live_frame_handler(
@@ -212,14 +229,23 @@ def live_frame_handler(
     Returns:
         Tuple of (status header, probabilities dict for gr.Label, bin card HTML, guidance HTML).
     """
-    pipeline = get_live_pipeline()
-    res = pipeline.process_frame(image, enforce_throttle=True)
+    try:
+        pipeline = get_live_pipeline()
+        res = pipeline.process_frame(image, enforce_throttle=True)
 
-    prob_dict = {item.class_name: item.probability for item in res.top_predictions}
-    bin_html = format_bin_card(res)
-    guidance_html = format_live_guidance_card(res)
+        prob_dict = {item.class_name: item.probability for item in res.top_predictions}
+        bin_html = format_bin_card(res)
+        guidance_html = format_live_guidance_card(res)
 
-    return res.status, prob_dict, bin_html, guidance_html
+        return res.status, prob_dict, bin_html, guidance_html
+    except Exception as err:
+        logger.error(f"Live frame processing error: {err}", exc_info=True)
+        return (
+            "Stream Interrupted",
+            {},
+            "<div style='color: #c62828; padding: 12px;'>⚠️ Live camera stream interrupted. Click 'Reset Stabilizer State' to resume.</div>",
+            "<div style='color: #e65100;'>Camera stream paused.</div>",
+        )
 
 
 def reset_live_handler() -> tuple[str, dict[str, float], str, str]:
@@ -259,16 +285,24 @@ def explain_image_handler(
             "⚠️ **No image provided.** Please upload an image or take a camera snapshot first.",
         )
 
-    target_cls = None if target_choice == "Top Prediction" else target_choice.lower().strip()
-    explainer = get_explainer()
-    res = explainer.explain(active_img, target_class=target_cls)
+    try:
+        target_cls = None if target_choice == "Top Prediction" else target_choice.lower().strip()
+        explainer = get_explainer()
+        res = explainer.explain(active_img, target_class=target_cls)
 
-    info_text = (
-        f"**Explained Target:** `{res.target_class.title()}` | "
-        f"**Top Prediction:** `{res.predicted_class.title()}` ({res.predicted_prob * 100:.1f}%)\n\n"
-        f"*{res.disclaimer}*"
-    )
-    return res.overlay_image, info_text
+        info_text = (
+            f"**Explained Target:** `{res.target_class.title()}` | "
+            f"**Top Prediction:** `{res.predicted_class.title()}` ({res.predicted_prob * 100:.1f}%)\n\n"
+            f"*{res.disclaimer}*"
+        )
+        return res.overlay_image, info_text
+    except Exception as err:
+        logger.error(f"Grad-CAM generation error: {err}", exc_info=True)
+        return (
+            None,
+            f"⚠️ **Explainability Notice:** Unable to generate Grad-CAM overlay ({err}). "
+            "Ensure the active image contains valid dimensions and try again.",
+        )
 
 
 CUSTOM_CSS = """
@@ -293,8 +327,19 @@ def create_app() -> gr.Blocks:
             )
             gr.Markdown(
                 "🔒 **Privacy Guarantee:** Images and video frames are processed strictly in-memory "
-                "and are **never saved to disk**.",
+                "and are **never saved to disk or persistent storage**. All inferences run ephemerally.",
                 elem_classes=["privacy-notice"],
+            )
+
+        with gr.Accordion("📱 Mobile & Camera Troubleshooting (HTTPS Required)", open=False):
+            gr.Markdown(
+                """
+                - **HTTPS Requirement:** Web browsers (iOS Safari, Android Chrome, Edge) **strictly require HTTPS** to allow camera access. If accessing via plain HTTP on a local network, camera permissions will be blocked by the browser security sandbox.
+                - **iOS / Safari:** Tap the page settings (`aA`) in the URL bar ➔ *Website Settings* ➔ Set *Camera* to **Allow**.
+                - **Android / Chrome:** Tap the tune/lock icon next to the URL ➔ *Permissions* ➔ Ensure *Camera* is **Allowed**.
+                - **Rear Camera Hint:** On mobile phones, toggle the camera flip button in the camera viewer to use the rear camera for optimal item focus.
+                - **Fallback:** If camera hardware is absent, disconnected, or permission is permanently blocked, switch to the **📁 Upload Image** tab.
+                """
             )
 
         with gr.Row():
@@ -306,7 +351,7 @@ def create_app() -> gr.Blocks:
                         upload_input = gr.Image(
                             type="pil",
                             sources=["upload"],
-                            label="Select or Drop Waste Photo (.jpg, .png)",
+                            label="Select or Drop Waste Photo (.jpg, .png, .webp)",
                         )
                         with gr.Row():
                             upload_btn = gr.Button("🔍 Classify Uploaded Image", variant="primary")
@@ -322,13 +367,13 @@ def create_app() -> gr.Blocks:
                     # Tab 2: Camera Snapshot (FR-11)
                     with gr.TabItem("📸 Camera Snapshot", id="tab_camera"):
                         gr.Markdown(
-                            "> **Camera Permission Notice:** Click 'Allow' when your browser requests webcam access. "
-                            "If your camera is unavailable or blocked, switch to the **Upload Image** tab."
+                            "> **Camera Snapshot Guide:** Center one waste item inside the frame. "
+                            "On phones, use your rear camera. If camera is blocked or permission denied, use the **Upload Image** tab."
                         )
                         camera_input = gr.Image(
                             type="pil",
                             sources=["webcam"],
-                            label="Capture Frame with Webcam",
+                            label="Capture Frame with Camera",
                         )
                         with gr.Row():
                             camera_btn = gr.Button("📸 Classify Camera Snapshot", variant="primary")
@@ -339,7 +384,7 @@ def create_app() -> gr.Blocks:
                         gr.Markdown(
                             "> **Live Streaming Mode:** Real-time throttled inference (~4 FPS) with automated blur/brightness "
                             "quality checks, center-crop targeting, and multi-frame temporal stabilization. "
-                            "If camera permission is denied, use the **Upload Image** tab."
+                            "Hold steady and center one item. If camera permission is denied, use the **Upload Image** tab."
                         )
                         live_input = gr.Image(
                             sources=["webcam"],
